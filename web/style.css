@@ -171,3 +171,43 @@ body {
     height: 20px;
     fill: white;
 }
+
+/* Grid preview (static prototype) */
+.grid-preview-wrapper {
+    width: 90vw;
+    max-width: 960px;
+    height: auto;
+    margin: 24px auto;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-auto-rows: auto;
+    gap: 0;
+    border: 1px solid #ccc;
+    background: #fafafa;
+}
+
+.grid-preview-cell {
+    border: 1px solid #e0e0e0;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    font-size: 12px;
+    color: #555;
+    user-select: none;
+    text-align: center;
+    padding: 4px;
+}
+
+.grid-preview-cell:nth-child(odd) {
+    background: #fefefe;
+}
+
+.grid-preview-legend {
+    text-align: center;
+    font-size: 14px;
+    color: #333;
+    margin-top: 8px;
+}

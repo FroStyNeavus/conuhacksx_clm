@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Grid Preview - Commodity Scoring Demo</title>
+    <link rel="stylesheet" type="text/css" href="./style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <!-- Simple grid preview with lines; populated via JS -->
+      <div id="commodity-preferences" style="text-align: center; margin: 20px auto; max-width: 960px;"></div>
+      <div class="grid-preview-wrapper" aria-label="Grid preview"></div>
+      <div class="grid-preview-legend">Grid summary (auto-generated from mock data)</div>
+    </div>
+
+    <!-- Commodity Scoring System -->
+    <script src="./commodityScoring.js"></script>
+
+    <!-- Grid summary rendering -->
+    <script>
+      (function () {
+        const container = document.querySelector('.grid-preview-wrapper');
+        if (!container || typeof CommodityScorer === 'undefined') return;
+
+        const scorer = new CommodityScorer({
+          maxDistance: 5000,
+          decayFactor: 2,
+          varianceAmplification: 2,
+        });
+
+        // Use mock data from commodityScoring.js
+        const data = typeof generateMockGridData === 'function'
+          ? generateMockGridData()
+          : null;
+        if (!data || !data.gridMap || !data.weights) return;
+
+        const { gridMap, weights } = data;
+        const amplified = scorer.calculateVarianceMultipliers(weights);
+        const baseScores = scorer.calculateAllBaseScores(gridMap, weights, amplified);
+        const aggregatedScores = scorer.calculateAllAggregatedScores(
+          gridMap,
+          weights,
+          baseScores,
+          amplified
+        );
+
+        // Display commodity preferences
+        const prefContainer = document.getElementById('commodity-preferences');
+        if (prefContainer) {
+          const commodityNames = ['Restaurant', 'Gas', 'Grocery', 'Pharmacy', 'Cafe'];
+          prefContainer.innerHTML = `
+            <div style="background: rgba(255,255,255,0.95); padding: 16px; border: 1px solid #ccc; border-radius: 8px; display: inline-block;">
+              <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #333;">Commodity Preferences (User Input Weights)</h3>
+              <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+                ${weights.map((w, i) => `
+                  <div style="text-align: center;">
+                    <strong style="display: block; margin-bottom: 4px; color: #555;">${commodityNames[i] || 'Type ' + (i+1)}</strong>
+                    <span style="font-size: 20px; font-weight: bold; color: #007bff;">${w}</span>
+                    <div style="font-size: 11px; color: #666; margin-top: 2px;">Amplified: ${amplified[i].toFixed(1)}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        // Adjust grid columns based on number of grids (cap at 8)
+        const n = Math.max(1, Math.ceil(Math.sqrt(aggregatedScores.length || 1)));
+        container.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
+
+        // Normalize scores to 0-100 based on distribution
+        const scores = aggregatedScores.map(r => r.aggregatedScore);
+        const minScore = Math.min(...scores);
+        const maxScore = Math.max(...scores);
+        const range = maxScore - minScore;
+
+        const normalizeScore = (score) => {
+          if (range === 0) return 50; // All same score -> neutral
+          return ((score - minScore) / range) * 100;
+        };
+
+        // Helper to map score (0-100) to red→blue
+        const scoreToColor = (score) => {
+          const clamped = Math.max(0, Math.min(100, score));
+          // 0 = red (255,0,0), 100 = blue (0,0,255)
+          const r = Math.round(255 * (1 - clamped / 100));
+          const b = Math.round(255 * (clamped / 100));
+          return `rgb(${r}, 0, ${b})`;
+        };
+
+        const commodityNames = ['Restaurant', 'Gas', 'Grocery', 'Pharmacy', 'Cafe'];
+
+        aggregatedScores.forEach((result) => {
+          const grid = gridMap.get(result.gridId);
+          const counts = grid.commodityCounts || [];
+          const totalCount = counts.reduce((a, b) => a + b, 0);
+          const normalizedScore = normalizeScore(result.aggregatedScore);
+
+          // Build commodity breakdown string with score contributions
+          const commodityBreakdown = counts
+            .map((count, idx) => {
+              const contribution = count * amplified[idx];
+              return `${commodityNames[idx] || 'Type ' + (idx+1)}: ${count} (${contribution.toFixed(1)})`;
+            })
+            .join('<br>');
+
+          const cell = document.createElement('div');
+          cell.className = 'grid-preview-cell';
+          cell.innerHTML = [
+            `<strong>${result.gridId}</strong>`,
+            `Base: ${result.baseScore.toFixed(2)}`,
+            `Agg: ${result.aggregatedScore.toFixed(2)}`,
+            `Norm: ${normalizedScore.toFixed(2)}`,
+            `<hr style="margin: 4px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);">`,
+            commodityBreakdown,
+          ].join('<br>');
+
+          // Apply color scale using normalized score (red=unwanted/low, blue=wanted/high)
+          cell.style.background = scoreToColor(normalizedScore);
+          cell.style.color = '#fff';
+
+          container.appendChild(cell);
+        });
+      })();
+    </script>
+  </body>
+</html>

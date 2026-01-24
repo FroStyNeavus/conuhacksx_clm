@@ -47,32 +47,27 @@
   <body>
     <div class="container">
       <div id="map"></div>
+
       <form class="form" id="input-form">
-        <h3>Rate Commodity Importance</h3>
-        <p class="form-description">Tell us how much these commodities are worth to you (0-100):</p>
-        
-        <div class="commodity-input">
-          <label for="restaurant-slider">Restaurants:</label>
-          <input type="range" id="restaurant-slider" name="restaurant" min="0" max="100" value="50" />
-          <span class="value-display" id="restaurant-value">50</span>
+        <div class="form-group">
+          <label for="restaurant-weight">Restaurant (0-100):</label>
+          <input type="range" id="restaurant-weight" min="0" max="100" value="85" />
+          <span id="restaurant-value">85</span>
         </div>
-        
-        <div class="commodity-input">
-          <label for="gas-slider">Gas Stations:</label>
-          <input type="range" id="gas-slider" name="gas_station" min="0" max="100" value="50" />
-          <span class="value-display" id="gas-value">50</span>
+        <div class="form-group">
+          <label for="gas-weight">Gas (0-100):</label>
+          <input type="range" id="gas-weight" min="0" max="100" value="60" />
+          <span id="gas-value">60</span>
         </div>
-        
-        <div class="commodity-input">
-          <label for="grocery-slider">Grocery Stores:</label>
-          <input type="range" id="grocery-slider" name="grocery_or_supermarket" min="0" max="100" value="50" />
-          <span class="value-display" id="grocery-value">50</span>
+        <div class="form-group">
+          <label for="grocery-weight">Grocery (0-100):</label>
+          <input type="range" id="grocery-weight" min="0" max="100" value="40" />
+          <span id="grocery-value">40</span>
         </div>
-        
-        <div class="commodity-input">
-          <label for="pharmacy-slider">Pharmacies:</label>
-          <input type="range" id="pharmacy-slider" name="pharmacy" min="0" max="100" value="50" />
-          <span class="value-display" id="pharmacy-value">50</span>
+        <div class="form-group">
+          <label for="pharmacy-weight">Pharmacy (0-100):</label>
+          <input type="range" id="pharmacy-weight" min="0" max="100" value="70" />
+          <span id="pharmacy-value">70</span>
         </div>
         
         <div class="commodity-input">
@@ -80,9 +75,7 @@
           <input type="range" id="school-slider" name="school" min="0" max="100" value="50" />
           <span class="value-display" id="school-value">50</span>
         </div>
-        
-        <button class="button" type="submit">Scan</button>
-        <button class="button hide-form-btn" type="button" id="hide-form-btn">Hide</button>
+        <button type="submit" class="button">Update Map</button>
       </form>
       <button id="show-form-btn" class="button show-form-btn" style="display: none;">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
@@ -94,6 +87,10 @@
       </button>
     </div>
 
+    <!-- Commodity Scoring System -->
+    <script src="./commodityScoring.js"></script>
+    
+    <!-- Main application -->
     <script src="./main.js"></script>
   </body>
 </html>
