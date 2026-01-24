@@ -107,11 +107,11 @@ class MapManagerSingleton {
         console.error("Error initializing overlay:", overlayError);
       }
       // !IMPORTANT: State change listener for any data updates, fetching, etc.
-      google.maps.event.addListener(this.map, "idle", async () => {
-        console.log("Map idle event triggered");
-        this.commoditiesData = await this.getCommodities();
-        this.updateVisualization(this.commoditiesData);
-      });
+      // google.maps.event.addListener(this.map, "idle", async () => {
+      //   console.log("Map idle event triggered");
+      //   this.commoditiesData = await this.getCommodities();
+      //   this.updateVisualization(this.commoditiesData);
+      // });
 
       console.log(LOG_MESSAGE.GOOGLE_API_LOADED); //TODO: Remove log
     } catch (error) {
@@ -300,3 +300,34 @@ if (document.readyState === "loading") {
 } else {
   initialize();
 }
+
+// Update slider value displays on input
+document.addEventListener("DOMContentLoaded", () => {
+  const sliders = document.querySelectorAll('input[type="range"]');
+  
+  sliders.forEach(slider => {
+    const valueDisplay = document.getElementById(slider.id.replace('-slider', '-value'));
+    
+    if (valueDisplay) {
+      slider.addEventListener('input', (e) => {
+        valueDisplay.textContent = e.target.value;
+      });
+    }
+  });
+  
+  // Handle form hide/show functionality
+  const form = document.getElementById('input-form');
+  const hideBtn = document.getElementById('hide-form-btn');
+  const showBtn = document.getElementById('show-form-btn');
+  
+  hideBtn.addEventListener('click', () => {
+    form.classList.add('hidden');
+    showBtn.style.display = 'block';
+  });
+  
+  showBtn.addEventListener('click', () => {
+    form.classList.remove('hidden');
+    showBtn.style.display = 'none';
+  });
+});
+
