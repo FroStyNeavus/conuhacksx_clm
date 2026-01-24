@@ -1,90 +1,102 @@
 class Map{
     constructor(){
-        this.grid = []
-        this.center = 0;
-        this.gridSize = 9; //Assuming a 3x3 Grid for now
+        this.Grid = []
+        this.Center = 0;
+        this.GridSize = 9; //This is the outer Grid
 
+        this.weight = [];
     }
     //getter
     getGrid(){
-        return this.grid;
+        return this.innerGrid;
     }
-    getContent(position){
-        if (this.grid[position] !== undefined) {
-            return this.grid[position];
-
-            //Maybe add a for loop to show the content in the grid position
-        }
-        else{
-            return null
-        }
-    }
-
-    getCenter() {
+    getCenter(){
         return this.center;
     }
-
     getGridSize(){
         return this.gridSize;
     }
+    getWeight(){
+        return this.weight;
+    }
+    getCell(Position){
+        return this.Grid[Position];
+    }
 
     //setter
-    setCenter(){
-        if (this.gridSize > 0) {
-            this.center = Math.floor(this.gridSize/2)
-        }
+    setCenters(){
+        this.Center = Math.floor(this.GridSize/2)
     }
-
     setGridSize(size){
-        this.gridSize = size*size;
-        this.setCenter();
+        this.GridSize = size*size;
+    }
+    setWeight(weight){
+        this.weight = weight;
     }
 
-
-    //One type of setter?
-    add(commodity, position){
-        //Creates a set to store the commodity to the grid
-        if (this.grid[position] === undefined) {
-            this.grid[position] = [[], 0]; //add a score for later
-        }
-        //Push the commodity to the grid position
-        commodity.setGridPosition(position);
-        this.grid[position][0].push(commodity);
-        //Placeholder Calculate the score of the position
-        //this.grid[position][1].getScore() or smth of the sort
+    //Functions
+    addCell(cell, position){
+        this.Grid[position] = cell;
     }
-
 
 }
-
-//Ignore this part of the code
-class commodity{
+class cell{
     constructor(){
-        this.GridPosition = 0;
-        this.distance2Center = 0; //tileCenter
-        this.distance2AbsCenter = 0; //GridCenter
-        this.score = 0 //Out of 100?
-        this.userNeed = 0; //The dragbar
+        this.topleft = [0, 0];
+        this.topright = [1,0];
+        this.bottomleft = [0,1];
+        this.bottomright = [1,1];
 
-    }
-    //Getter
+        this.position = 0;
 
-    //Setter
-    setGridPosition(position){
-        this.gridPosition = position;
-    }
+        this.score = 0;
+        this.aggregatedScore = 0;
 
-    setDistance2Center(distance2Center){
-        this.distance2Center = distance2Center;
+        this.commodities = []; //Currently 5 commodities
     }
 
-    setDistance2AbsCenter(distance2AbsCenter){
-        this.distance2AbsCenter = distance2AbsCenter;
+    //setter
+    setCoords(coords){ //subject to change based on goher
+        this.topleft = coords.top;
+        this.topright = coords.top;
+        this.bottomleft = coords.bottom;
+        this.bottomright = coords.right;
+
+    }
+
+    setPosition(position){
+        this.position = position;
+    }
+
+    setScore(score){
+        this.score = score;
+    }
+    setAggregatedScore(AggScore){
+        this.aggregatedScore = AggScore;
+    }
+    setCommodities(commodityCount, position){
+        this.commodities[position] = commodityCount;
+    }
+
+    //getter
+    getCoords(){
+        return this.topleft, this.topright, this.bottomleft, this.bottomright; //Subject to change
+    }
+
+    getPosition(){
+        return this.position;
+    }
+
+    getScore(){
+        return this.score;
+    }
+
+    getAggregatedScore(){
+        return this.aggregatedScore;
+    }
+    getCommodities(){
+        return this.commodities;
     }
 
 
-    async getScore(){
-
-        //Do some sort of math to calculate the score based on the distance, modifier and whatever
-    }
 }
