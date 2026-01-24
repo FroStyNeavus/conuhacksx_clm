@@ -5,11 +5,7 @@ class Map{
         this.gridSize = 9; //Assuming a 3x3 Grid for now
 
     }
-
     //getter
-
-
-
     getGrid(){
         return this.grid;
     }
@@ -28,6 +24,10 @@ class Map{
         return this.center;
     }
 
+    getGridSize(){
+        return this.gridSize;
+    }
+
     //setter
     setCenter(){
         if (this.gridSize > 0) {
@@ -41,6 +41,7 @@ class Map{
 
     setGridSize(size){
         this.gridSize = size*size;
+        this.setCenter(this.gridSize);
     }
 
 
@@ -51,6 +52,7 @@ class Map{
             this.grid[position] = {};
         }
         //Push the commodity to the grid position
+        commidity.setGridPosition(position);
         this.grid[position].push(commodity);
     }
 
@@ -61,7 +63,7 @@ class commodity{
         this.GridPosition = 0;
         this.distance2Center = 0; //tileCenter
         this.distance2AbsCenter = 0; //GridCenter
-        this.score = 0
+        this.score = 0 //Out of 100?
 
     }
     //Getter
