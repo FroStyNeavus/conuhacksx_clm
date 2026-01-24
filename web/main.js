@@ -19,6 +19,72 @@ const MAP_CONFIG = {
   mapId: "DEMO_MAP_ID",
 };
 
+class Commodity {
+  /**
+   * @param {Object} placeData - Raw place data from Google Places API
+   * @param {string} placeType - Type of place (restaurant, gas_station, etc.)
+   */
+  constructor(placeData, placeType) {
+    this.primaryType = placeData.primaryType || placeType || "unknown";
+    this.displayName = placeData.displayName || "Unknown Place";
+    this.location = {
+      lat: placeData.location ? placeData.location.lat() : 0,
+      lng: placeData.location ? placeData.location.lng() : 0,
+    };
+    this.formattedAddress =
+      placeData.formattedAddress || "No address available";
+    this.placeType = placeType;
+    this.id = placeData.id || null;
+  }
+
+  /**
+   * Convert to GeoJSON Feature format
+   * @returns {Object} GeoJSON Feature
+   */
+  toGeoJSON() {
+    return {
+      type: "Feature",
+      properties: {
+        name: this.displayName,
+        address: this.formattedAddress,
+        primaryType: this.primaryType,
+        placeType: this.placeType,
+        value: this.commodityScore,
+      },
+      geometry: {
+        type: "Point",
+        coordinates: [this.location.lng, this.location.lat],
+      },
+    };
+  }
+
+  /**
+   * Get a simple object representation
+   * @returns {Object} Plain object with all fields
+   */
+  toObject() {
+    return {
+      id: this.id,
+      primaryType: this.primaryType,
+      displayName: this.displayName,
+      location: this.location,
+      formattedAddress: this.formattedAddress,
+      placeType: this.placeType,
+      commodityScore: this.commodityScore,
+    };
+  }
+
+  /**
+   * Static method to create Commodity from Place API response
+   * @param {Object} place - Google Place object
+   * @param {string} type - Place type
+   * @returns {Commodity}
+   */
+  static fromPlace(place, type) {
+    return new Commodity(place, type);
+  }
+}
+
 /**
  * Commodities Data Manager
  * TODO: Adjust for flexible commodity values
@@ -107,11 +173,12 @@ class MapManagerSingleton {
         console.error("Error initializing overlay:", overlayError);
       }
       // !IMPORTANT: State change listener for any data updates, fetching, etc.
-      // google.maps.event.addListener(this.map, "idle", async () => {
-      //   console.log("Map idle event triggered");
-      //   this.commoditiesData = await this.getCommodities();
-      //   this.updateVisualization(this.commoditiesData);
-      // });
+      google.maps.event.addListener(this.map, "idle", async () => {
+        console.log("Map idle event triggered");
+        this.commoditiesData = await this.getCommodities();
+        console.log(this.commoditiesData);
+        // this.updateVisualization(this.commoditiesData);
+      });
 
       console.log(LOG_MESSAGE.GOOGLE_API_LOADED); //TODO: Remove log
     } catch (error) {
@@ -164,13 +231,13 @@ class MapManagerSingleton {
       for (let col = 0; col < gridSize; col++) {
         cells.push({
           ne: {
-            lat: ne.lat() - (row * latStep),
-            lng: sw.lng() + ((col + 1) * lngStep)
+            lat: ne.lat() - row * latStep,
+            lng: sw.lng() + (col + 1) * lngStep,
           },
           sw: {
-            lat: ne.lat() - ((row + 1) * latStep),
-            lng: sw.lng() + (col * lngStep)
-          }
+            lat: ne.lat() - (row + 1) * latStep,
+            lng: sw.lng() + col * lngStep,
+          },
         });
       }
     }
@@ -188,28 +255,76 @@ class MapManagerSingleton {
       const { spherical } = await google.maps.importLibrary("geometry");
       const { Place } = await google.maps.importLibrary("places");
 
-      let bounds = this.map.getBounds();
-      const ne = bounds.getNorthEast();
-      const sw = bounds.getSouthWest();
+      // let bounds = this.map.getBounds();
+      // const ne = bounds.getNorthEast();
+      // const sw = bounds.getSouthWest();
 
-      const center = this.map.getCenter();
-      const diameter = spherical.computeDistanceBetween(ne, sw);
-      const radius = Math.min(diameter / 2, 50000);
+      // Divide map into smaller grid cells for more thorough search
+      const gridCells = this.toGrid(2); // 2x2 = 4 cells
+      const types = [
+        "restaurant",
+        "gas_station",
+        "supermarket",
+        "pharmacy",
+        "school",
+      ];
+      const allPlaces = [];
+      const seenPlaceIds = new Set(); // Avoid duplicates
 
       // IMPORTANT: Customize the data fields here as per your requirements
-      const request = {
-        fields: ["displayName", "location", "formattedAddress"],
-        locationRestriction: { center, radius },
-        includedPrimaryTypes: ["restaurant"],
-        maxResultCount: 2,
-      };
+      for (const cell of gridCells) {
+        const cellCenter = {
+          lat: (cell.ne.lat + cell.sw.lat) / 2,
+          lng: (cell.ne.lng + cell.sw.lng) / 2,
+        };
+
+        const cellNE = new google.maps.LatLng(cell.ne.lat, cell.ne.lng);
+        const cellSW = new google.maps.LatLng(cell.sw.lat, cell.sw.lng);
+        const cellDiameter = spherical.computeDistanceBetween(cellNE, cellSW);
+        const cellRadius = Math.min(cellDiameter / 2, 50000);
+
+        for (const type of types) {
+          const request = {
+            fields: [
+              "primaryType",
+              "displayName",
+              "location",
+              "formattedAddress",
+            ],
+            locationRestriction: { center: cellCenter, radius: cellRadius },
+            includedPrimaryTypes: [
+              "restaurant",
+              "gas_station",
+              "supermarket",
+              "pharmacy",
+              "school",
+            ],
+            maxResultCount: 20,
+          };
+          try {
+            const { places } = await Place.searchNearby(request);
+
+            // Filter out duplicates and add to results
+            places.forEach((place) => {
+              if (!seenPlaceIds.has(place.id)) {
+                // place.placeType = type;
+                let commodity = Commodity.fromPlace(place, type);
+                allPlaces.push(commodity);
+                seenPlaceIds.add(place.id);
+              }
+            });
+          } catch (typeError) {
+            console.error(`Error fetching ${type} in cell:`, typeError);
+          }
+        }
+      }
 
       // Search nearby places based on the request
-      console.log("Searching for nearby places with radius:", radius);
-      const { places } = await Place.searchNearby(request);
-      console.log("Nearby places found:", places.length);
-      console.log("Places data:", places);
-      return places;
+      // console.log("Searching for nearby places with radius:", radius);
+      // const { places } = await Place.searchNearby(request);
+      // console.log("Nearby places found:", places.length);
+      // console.log("Places data:", places);
+      return allPlaces;
     } catch (error) {
       console.error("Error fetching commodities:", error);
       return [];
@@ -289,7 +404,8 @@ class MapManagerSingleton {
     } else {
       console.error("deckGLInstance not found!");
     }
-  }}
+  }
+}
 
 // Create singleton instance
 const MapManager = new MapManagerSingleton();
@@ -334,34 +450,36 @@ if (document.readyState === "loading") {
 // Update slider value displays on input
 document.addEventListener("DOMContentLoaded", () => {
   const sliders = document.querySelectorAll('input[type="range"]');
-  
-  sliders.forEach(slider => {
-    const valueDisplay = document.getElementById(slider.id.replace('-slider', '-value'));
-    
+
+  sliders.forEach((slider) => {
+    const valueDisplay = document.getElementById(
+      slider.id.replace("-slider", "-value"),
+    );
+
     if (valueDisplay) {
-      slider.addEventListener('input', (e) => {
+      slider.addEventListener("input", (e) => {
         valueDisplay.textContent = e.target.value;
       });
     }
   });
-  
+
   // Handle form hide/show functionality
-  const form = document.getElementById('input-form');
-  const hideBtn = document.getElementById('hide-form-btn');
-  const showBtn = document.getElementById('show-form-btn');
-  
-  hideBtn.addEventListener('click', () => {
-    form.classList.add('hidden');
-    showBtn.style.display = 'block';
+  const form = document.getElementById("input-form");
+  const hideBtn = document.getElementById("hide-form-btn");
+  const showBtn = document.getElementById("show-form-btn");
+
+  hideBtn.addEventListener("click", () => {
+    form.classList.add("hidden");
+    showBtn.style.display = "block";
   });
-  
-  showBtn.addEventListener('click', () => {
-    form.classList.remove('hidden');
-    showBtn.style.display = 'none';
+
+  showBtn.addEventListener("click", () => {
+    form.classList.remove("hidden");
+    showBtn.style.display = "none";
   });
-  
+
   // Handle scan button click to print grid cells
-  form.addEventListener('submit', (e) => {
+  form.addEventListener("submit", (e) => {
     e.preventDefault();
     const cells = MapManager.toGrid(4);
     console.log("Map Grid Cells:", cells);
