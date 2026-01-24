@@ -1,14 +1,14 @@
-class Map{
+class ScoringMap{
     constructor(){
-        this.Grid = []
-        this.Center = 0;
-        this.GridSize = 9; //This is the outer Grid
+        this.grid = []
+        this.center = 0;
+        this.gridSize = 9; //This is the outer Grid
 
         this.weight = [];
     }
     //getter
     getGrid(){
-        return this.innerGrid;
+        return this.grid;
     }
     getCenter(){
         return this.center;
@@ -19,24 +19,73 @@ class Map{
     getWeight(){
         return this.weight;
     }
-    getCell(Position){
-        return this.Grid[Position];
+    getCell(position){
+        return this.grid[position];
     }
 
     //setter
-    setCenters(){
-        this.Center = Math.floor(this.GridSize/2)
+    setCenter(){
+        this.center = Math.floor(this.gridSize/2)
     }
     setGridSize(size){
-        this.GridSize = size*size;
+        this.gridSize = size*size;
+        this.setCenter();
     }
     setWeight(weight){
-        this.weight = weight;
+        if (Array.isArray(weight) && weight.length === 5) {
+            this.weight = weight;
+        } else {
+            throw new Error("Weight must be an array of size 5");
+        }
     }
 
     //Functions
     addCell(cell, position){
-        this.Grid[position] = cell;
+        this.grid[position] = cell;
+    }
+
+    getAllScores(){
+        return this.grid.map(cell => cell ? cell.getScores() : null);
+    }
+
+    /**
+     * Send data to scorer for processing
+     * @param {CommodityScorer} scorer - The scorer instance
+     * @returns {Array} Aggregated scores with grid data
+     */
+    calculateScores(scorer) {
+        if (!scorer) throw new Error("Scorer instance required");
+        
+        // Convert grid cells to a Map format expected by scorer
+        const gridMap = new Map();
+        this.grid.forEach((cellObj, index) => {
+            if (cellObj) {
+                // Calculate center from coordinates
+                const centerLat = (cellObj.topleft[1] + cellObj.bottomright[1]) / 2;
+                const centerLng = (cellObj.topleft[0] + cellObj.bottomright[0]) / 2;
+                
+                gridMap.set(`cell_${index}`, {
+                    gridId: `cell_${index}`,
+                    centerLat: centerLat,
+                    centerLng: centerLng,
+                    commodityCounts: cellObj.commodities
+                });
+            }
+        });
+
+        // Calculate scores using the scorer
+        const scores = scorer.calculateAllAggregatedScores(gridMap, this.weight);
+
+        // Store scores back in cells
+        scores.forEach((scoreData) => {
+            const cellIndex = parseInt(scoreData.gridId.split('_')[1]);
+            if (this.grid[cellIndex]) {
+                this.grid[cellIndex].setScore(scoreData.baseScore);
+                this.grid[cellIndex].setAggregatedScore(scoreData.aggregatedScore);
+            }
+        });
+
+        return scores;
     }
 
 }
@@ -57,10 +106,10 @@ class cell{
 
     //setter
     setCoords(coords){ //subject to change based on goher
-        this.topleft = coords.top;
-        this.topright = coords.top;
-        this.bottomleft = coords.bottom;
-        this.bottomright = coords.right;
+        this.topleft = coords.topleft;
+        this.topright = coords.topright;
+        this.bottomleft = coords.bottomleft;
+        this.bottomright = coords.bottomright;
 
     }
 
@@ -80,11 +129,26 @@ class cell{
 
     //getter
     getCoords(){
-        return this.topleft, this.topright, this.bottomleft, this.bottomright; //Subject to change
+        return {
+            topleft: this.topleft,
+            topright: this.topright,
+            bottomleft: this.bottomleft,
+            bottomright: this.bottomright
+        }
     }
 
     getPosition(){
         return this.position;
+    }    setCoords(coords) {
+        // coords should have: coords.topright and coords.bottomleft
+        // Each corner is [longitude, latitude] or [x, y]
+        
+        this.topright = coords.topright;      // [x1, y1]
+        this.bottomleft = coords.bottomleft;  // [x2, y2]
+        
+        // Calculate the other two corners
+        this.topleft = [coords.bottomleft[0], coords.topright[1]];    // [x2, y1]
+        this.bottomright = [coords.topright[0], coords.bottomleft[1]]; // [x1, y2]
     }
 
     getScore(){
@@ -93,6 +157,10 @@ class cell{
 
     getAggregatedScore(){
         return this.aggregatedScore;
+    }
+
+    getScores(){
+        return [this.score, this.aggregatedScore];
     }
     getCommodities(){
         return this.commodities;

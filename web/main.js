@@ -353,6 +353,117 @@ class MapManagerSingleton {
   }
 
   /**
+   * Initialize the scoring map with cells and commodities
+   * @param {number} gridSize - Number of grid divisions (e.g., 3 for 3x3)
+   * @param {Array<number>} weights - Commodity weights (must be array of 5)
+   * @returns {Promise<Map>} Initialized Map instance with scores
+   */
+  async initializeScoringMap(gridSize = 3, weights = [85, 60, 40, 70, 90]) {
+    try {
+      // 1. Create ScoringMap instance
+      const scoringMap = new ScoringMap();
+      scoringMap.setGridSize(gridSize);
+      scoringMap.setWeight(weights);
+
+      // 2. Get grid cells from current map bounds
+      const gridCells = this.toGrid(gridSize);
+
+      // 3. Get commodities from Google Places API
+      const commodities = await this.getCommodities();
+      console.log(`Fetched ${commodities.length} commodities`);
+
+      // Commodity type mapping
+      const typeIndexMap = {
+        'restaurant': 0,
+        'gas_station': 1,
+        'supermarket': 2,
+        'pharmacy': 3,
+        'school': 4
+      };
+
+      // 4. Create and populate cell objects
+      console.log('\n=== POPULATING CELLS ===');
+      gridCells.forEach((cellBounds, index) => {
+        const cellObj = new cell();
+        
+        // Set cell coordinates from grid bounds
+        cellObj.setCoords({
+          topright: [cellBounds.ne.lng, cellBounds.ne.lat],
+          bottomleft: [cellBounds.sw.lng, cellBounds.sw.lat]
+        });
+        cellObj.setPosition(index);
+
+        // Initialize commodity counts array [restaurant, gas, grocery, pharmacy, school]
+        const commodityCounts = [0, 0, 0, 0, 0];
+
+        // Count commodities in this cell by type
+        commodities.forEach(commodity => {
+          const lat = commodity.location.lat;
+          const lng = commodity.location.lng;
+          
+          // Check if commodity is within cell bounds
+          if (lat >= cellBounds.sw.lat && 
+              lat <= cellBounds.ne.lat &&
+              lng >= cellBounds.sw.lng && 
+              lng <= cellBounds.ne.lng) {
+            
+            // Map primaryType to index and increment count
+            const typeIndex = typeIndexMap[commodity.primaryType];
+            if (typeIndex !== undefined) {
+              commodityCounts[typeIndex]++;
+            }
+          }
+        });
+
+        // Store commodity counts in cell (ensure all 5 positions are filled with 0s)
+        commodityCounts.forEach((count, typeIndex) => {
+          cellObj.setCommodities(count, typeIndex);
+        });
+
+        // Add cell to map
+        scoringMap.addCell(cellObj, index);
+        
+        // Log stored data for verification
+        console.log(`Cell ${index} stored:`, {
+          position: cellObj.getPosition(),
+          commodityCounts: cellObj.getCommodities(),
+          coords: cellObj.getCoords()
+        });
+      });
+
+      console.log('\n=== MAP POPULATED ===');
+      console.log('Total cells in map:', scoringMap.getGrid().length);
+
+      // 5. Send to scorer for processing
+      console.log('\n=== SENDING TO SCORER ===');
+      const scorer = new CommodityScorer({
+        maxDistance: 5000,
+        decayFactor: 2,
+        varianceAmplification: 2
+      });
+      
+      console.log('Weights being used:', scoringMap.getWeight());
+      const scores = scoringMap.calculateScores(scorer);
+      console.log(`\n=== SCORING COMPLETE ===`);
+      console.log(`Processed ${scores.length} cells`);
+      
+      // Display scores after calculation
+      console.log('\nScores after calculation:');
+      scores.forEach((scoreData, index) => {
+        console.log(`${scoreData.gridId}: Base=${scoreData.baseScore}, Aggregated=${scoreData.aggregatedScore}`);
+      });
+      
+      console.log('\nAll scores from map:', scoringMap.getAllScores());
+
+      // 6. Return scored map to main.js
+      return scoringMap;
+    } catch (error) {
+      console.error("Error initializing scoring map:", error);
+      return null;
+    }
+  }
+
+  /**
    * Update visualization layers based on commodities data
    * @param {Array} pureData - Raw place data from Google Places API
    */
@@ -478,11 +589,45 @@ document.addEventListener("DOMContentLoaded", () => {
     showBtn.style.display = "none";
   });
 
-  // Handle scan button click to print grid cells
-  form.addEventListener("submit", (e) => {
+  // Handle scan button click to initialize scoring map
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const cells = MapManager.toGrid(4);
-    console.log("Map Grid Cells:", cells);
-    console.table(cells);
+    
+    // Get weights from form sliders
+    const weights = [
+      parseFloat(document.getElementById('restaurant-value')?.textContent || 85),
+      parseFloat(document.getElementById('gas-value')?.textContent || 60),
+      parseFloat(document.getElementById('grocery-value')?.textContent || 40),
+      parseFloat(document.getElementById('pharmacy-value')?.textContent || 70),
+      parseFloat(document.getElementById('school-value')?.textContent || 90)
+    ];
+    
+    console.log('Weights from form:', weights);
+    
+    // Data flow: main.js → Map class → CommodityScorer → Map class → main.js
+    const scoringMap = await MapManager.initializeScoringMap(3, weights);
+    
+    if (scoringMap) {
+      console.log('\n=== SCORING MAP COMPLETE ===');
+      console.log('Grid size:', scoringMap.getGridSize());
+      console.log('Center cell:', scoringMap.getCenter());
+      console.log('Weights:', scoringMap.getWeight());
+      console.log('All scores [baseScore, aggregatedScore]:', scoringMap.getAllScores());
+      
+      // Display individual cell details
+      console.log('\n=== CELL DETAILS ===');
+      for (let i = 0; i < scoringMap.getGridSize(); i++) {
+        const cellData = scoringMap.getCell(i);
+        if (cellData) {
+          console.log(`Cell ${i}:`, {
+            position: cellData.getPosition(),
+            baseScore: cellData.getScore(),
+            aggregatedScore: cellData.getAggregatedScore(),
+            commodities: cellData.getCommodities(),
+            coords: cellData.getCoords()
+          });
+        }
+      }
+    }
   });
 });
