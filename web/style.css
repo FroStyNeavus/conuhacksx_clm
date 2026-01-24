@@ -145,16 +145,17 @@ body {
     top: 50%;
     transform: translateY(-50%);
     z-index: 10;
-    padding: 12px 8px;
+    width: 40px;
+    height: 40px;
+    padding: 8px;
     background: #007bff;
     color: white;
     border: none;
     border-radius: 0 4px 4px 0;
     cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .show-form-btn:hover {
@@ -163,4 +164,10 @@ body {
 
 .form.hidden {
     display: none;
+}
+
+.show-form-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: white;
 }
