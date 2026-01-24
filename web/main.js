@@ -289,8 +289,7 @@ class MapManagerSingleton {
     } else {
       console.error("deckGLInstance not found!");
     }
-  }
-}
+  }}
 
 // Create singleton instance
 const MapManager = new MapManagerSingleton();
@@ -369,4 +368,3 @@ document.addEventListener("DOMContentLoaded", () => {
     console.table(cells);
   });
 });
-
