@@ -38,7 +38,6 @@ class ScoringMap{
             throw new Error("Weight must be an array of size 5");
         }
     }
-
     //Functions
     addCell(cell, position){
         this.grid[position] = cell;
