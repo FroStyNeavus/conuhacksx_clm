@@ -147,12 +147,10 @@ class MapManagerSingleton {
    * @returns {Promise<Array>} List of nearby commodities
    */
 
-  toGrid(n=16) {
+  toGrid(gridSize) {
     const bounds = this.map.getBounds();
     const ne = bounds.getNorthEast();
     const sw = bounds.getSouthWest();
-
-    const gridSize = Math.sqrt(n);
 
     const latDiff = ne.lat() - sw.lat();
     const lngDiff = ne.lng() - sw.lng();
@@ -361,6 +359,14 @@ document.addEventListener("DOMContentLoaded", () => {
   showBtn.addEventListener('click', () => {
     form.classList.remove('hidden');
     showBtn.style.display = 'none';
+  });
+  
+  // Handle scan button click to print grid cells
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const cells = MapManager.toGrid(4);
+    console.log("Map Grid Cells:", cells);
+    console.table(cells);
   });
 });
 
