@@ -1,0 +1,12 @@
+{
+  "name": "hackathon",
+  "version": "1.0.0",
+  "description": "Hackathon project",
+  "main": "start_server.js",
+  "scripts": {
+    "start": "node start_server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

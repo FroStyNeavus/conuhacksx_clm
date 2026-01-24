@@ -1,0 +1,19 @@
+services:
+    web:
+        build: .
+        command: npm start
+        develop:
+          watch:
+            - action: sync
+              path: ./web
+              target: /src/web
+              ignore:
+                - node_modules/
+            - action: rebuild
+              path: package.json
+        ports:
+            - "9000:9000"
+        volumes:
+            - ./web:/src/web
+        environment:
+            - NODE_ENV=development
