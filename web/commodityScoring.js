@@ -56,6 +56,17 @@
  *   - Return: Array of all grid scores
  */
 
+// Method summary for CommodityScorer:
+// - calculateDistance: Haversine distance between two lat/lng points (meters)
+// - calculateScoreDecay: Exponential decay weight for a given distance
+// - calculateVarianceMultipliers: Amplify weights based on variance/outliers
+// - calculateGridScore: Base score for a single grid using amplified weights
+// - calculateAllBaseScores: Precompute base scores for all grids
+// - calculateAggregatedScore: Neighbor-weighted score with distance decay
+// - calculateAllAggregatedScores: Aggregated scores for every grid
+// - getHeatmapData: Heatmap-ready payload of lat/lng/value per grid
+// - getSummary: Dataset-wide stats (avg, median, min, max, totals)
+
 class CommodityScorer {
     /**
      * @param {Object} config
