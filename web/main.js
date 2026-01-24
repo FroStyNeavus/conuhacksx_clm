@@ -14,7 +14,7 @@ const LOG_MESSAGE = {
 };
 
 const MAP_CONFIG = {
-  zoom: 12,
+  zoom: 15,
   center: { lat: 45.508, lng: -73.561 },
   mapId: "DEMO_MAP_ID",
 };
@@ -142,6 +142,7 @@ class MapManagerSingleton {
     this.map = null;
     this.commoditiesData = [];
     this.deckGLInstance = null;
+    this.idleTimeout = null; // For debouncing map idle event
   }
 
   /**
@@ -160,25 +161,33 @@ class MapManagerSingleton {
         console.log("Overlay initialized, fetching initial data...");
 
         // Fetch initial data after overlay is ready
-        this.commoditiesData = await this.getCommodities();
-        console.log(
-          "Initial commodities data fetched:",
-          this.commoditiesData?.length || 0,
-          "places",
-        );
+        // const { grid, data } = await this.getCommodities();
+        // this.commoditiesData = data;
+        // console.log(
+        //   "Initial commodities data fetched:",
+        //   this.commoditiesData?.length || 0,
+        //   "places",
+        // );
 
-        this.updateVisualization(this.commoditiesData);
-        console.log("Initial visualization updated");
+        // this.updateVisualization(this.commoditiesData);
+        // console.log("Initial visualization updated");
       } catch (overlayError) {
         console.error("Error initializing overlay:", overlayError);
       }
       // !IMPORTANT: State change listener for any data updates, fetching, etc.
-      google.maps.event.addListener(this.map, "idle", async () => {
-        console.log("Map idle event triggered");
-        this.commoditiesData = await this.getCommodities();
-        console.log(this.commoditiesData);
-        // this.updateVisualization(this.commoditiesData);
-      });
+      // Debounced idle event - waits 2 seconds after map stops moving
+      // google.maps.event.addListener(this.map, "idle", () => {
+      //   // Clear any existing timeout
+      //   if (this.idleTimeout) {
+      //     clearTimeout(this.idleTimeout);
+      //   }
+
+      //   // Set a new timeout for 2 seconds
+      //   this.idleTimeout = setTimeout(() => {
+      //     console.log("Map idle for 2 seconds, triggering scan...");
+      //     this.scanCurrentView();
+      //   }, 2000); // 2 second delay
+      // });
 
       console.log(LOG_MESSAGE.GOOGLE_API_LOADED); //TODO: Remove log
     } catch (error) {
@@ -245,7 +254,7 @@ class MapManagerSingleton {
     return cells;
   }
 
-  async getCommodities() {
+  async getCommodities(grid) {
     try {
       if (!this.map) {
         console.error("Map not initialized");
@@ -255,12 +264,8 @@ class MapManagerSingleton {
       const { spherical } = await google.maps.importLibrary("geometry");
       const { Place } = await google.maps.importLibrary("places");
 
-      // let bounds = this.map.getBounds();
-      // const ne = bounds.getNorthEast();
-      // const sw = bounds.getSouthWest();
-
       // Divide map into smaller grid cells for more thorough search
-      const gridCells = this.toGrid(2); // 2x2 = 4 cells
+      const gridCells = grid || this.toGrid(4); // 2x2 = 4 cells
       const types = [
         "restaurant",
         "gas_station",
@@ -292,13 +297,7 @@ class MapManagerSingleton {
               "formattedAddress",
             ],
             locationRestriction: { center: cellCenter, radius: cellRadius },
-            includedPrimaryTypes: [
-              "restaurant",
-              "gas_station",
-              "supermarket",
-              "pharmacy",
-              "school",
-            ],
+            includedPrimaryTypes: [type], // Only search for the current type
             maxResultCount: 20,
           };
           try {
@@ -318,12 +317,6 @@ class MapManagerSingleton {
           }
         }
       }
-
-      // Search nearby places based on the request
-      // console.log("Searching for nearby places with radius:", radius);
-      // const { places } = await Place.searchNearby(request);
-      // console.log("Nearby places found:", places.length);
-      // console.log("Places data:", places);
       return allPlaces;
     } catch (error) {
       console.error("Error fetching commodities:", error);
@@ -405,6 +398,14 @@ class MapManagerSingleton {
       console.error("deckGLInstance not found!");
     }
   }
+
+  async scanCurrentView() {
+    const grid = this.toGrid(5);
+    const data = await this.getCommodities(grid);
+    console.log(data);
+    return { grid, data };
+    // return grid;
+  }
 }
 
 // Create singleton instance
@@ -479,10 +480,33 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Handle scan button click to print grid cells
-  form.addEventListener("submit", (e) => {
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const cells = MapManager.toGrid(4);
-    console.log("Map Grid Cells:", cells);
-    console.table(cells);
+
+    // Get commodity preferences from the form
+    const commodityPreferences = getCommodityPreferences();
+    console.log("Commodity Preferences:", commodityPreferences);
+
+    // Pass preferences to map manager
+    await MapManager.scanCurrentView();
   });
 });
+
+/**
+ * Get commodity preference values from the form
+ * @returns {Object} Key-value pairs where key is commodity type and value is the slider value (0-100)
+ */
+function getCommodityPreferences() {
+  const form = document.getElementById("input-form");
+  const sliders = form.querySelectorAll('input[type="range"]');
+
+  const preferences = {};
+
+  sliders.forEach((slider) => {
+    const commodityType = slider.name; // e.g., "restaurant", "gas_station", etc.
+    const value = parseInt(slider.value, 10);
+    preferences[commodityType] = value;
+  });
+
+  return preferences;
+}
