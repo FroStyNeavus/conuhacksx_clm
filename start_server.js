@@ -20,6 +20,7 @@ const server = http.createServer((req, res) => {
         if (ext === '.html') contentType = 'text/html';
         else if (ext === '.css') contentType = 'text/css';
         else if (ext === '.js') contentType = 'application/javascript';
+        else if (ext === '.svg') contentType = 'image/svg+xml';
 
         res.statusCode = 200;
         res.setHeader('Content-Type', contentType);
