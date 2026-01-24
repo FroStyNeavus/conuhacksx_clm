@@ -15,7 +15,7 @@ const LOG_MESSAGE = {
 
 const MAP_CONFIG = {
   zoom: 12,
-  center: { lat: -25.344, lng: 131.031 },
+  center: { lat: 45.508, lng: -73.561 },
   mapId: "DEMO_MAP_ID",
 };
 
@@ -107,11 +107,11 @@ class MapManagerSingleton {
         console.error("Error initializing overlay:", overlayError);
       }
       // !IMPORTANT: State change listener for any data updates, fetching, etc.
-      google.maps.event.addListener(this.map, "idle", async () => {
-        console.log("Map idle event triggered");
-        this.commoditiesData = await this.getCommodities();
-        this.updateVisualization(this.commoditiesData);
-      });
+      // google.maps.event.addListener(this.map, "idle", async () => {
+      //   console.log("Map idle event triggered");
+      //   this.commoditiesData = await this.getCommodities();
+      //   this.updateVisualization(this.commoditiesData);
+      // });
 
       console.log(LOG_MESSAGE.GOOGLE_API_LOADED); //TODO: Remove log
     } catch (error) {
@@ -146,6 +146,39 @@ class MapManagerSingleton {
    * Utilize Golgle Places API
    * @returns {Promise<Array>} List of nearby commodities
    */
+
+  toGrid(n=16) {
+    const bounds = this.map.getBounds();
+    const ne = bounds.getNorthEast();
+    const sw = bounds.getSouthWest();
+
+    const gridSize = Math.sqrt(n);
+
+    const latDiff = ne.lat() - sw.lat();
+    const lngDiff = ne.lng() - sw.lng();
+
+    const latStep = latDiff / gridSize;
+    const lngStep = lngDiff / gridSize;
+
+    const cells = [];
+
+    for (let row = 0; row < gridSize; row++) {
+      for (let col = 0; col < gridSize; col++) {
+        cells.push({
+          ne: {
+            lat: ne.lat() - (row * latStep),
+            lng: sw.lng() + ((col + 1) * lngStep)
+          },
+          sw: {
+            lat: ne.lat() - ((row + 1) * latStep),
+            lng: sw.lng() + (col * lngStep)
+          }
+        });
+      }
+    }
+
+    return cells;
+  }
 
   async getCommodities() {
     try {
@@ -300,3 +333,34 @@ if (document.readyState === "loading") {
 } else {
   initialize();
 }
+
+// Update slider value displays on input
+document.addEventListener("DOMContentLoaded", () => {
+  const sliders = document.querySelectorAll('input[type="range"]');
+  
+  sliders.forEach(slider => {
+    const valueDisplay = document.getElementById(slider.id.replace('-slider', '-value'));
+    
+    if (valueDisplay) {
+      slider.addEventListener('input', (e) => {
+        valueDisplay.textContent = e.target.value;
+      });
+    }
+  });
+  
+  // Handle form hide/show functionality
+  const form = document.getElementById('input-form');
+  const hideBtn = document.getElementById('hide-form-btn');
+  const showBtn = document.getElementById('show-form-btn');
+  
+  hideBtn.addEventListener('click', () => {
+    form.classList.add('hidden');
+    showBtn.style.display = 'block';
+  });
+  
+  showBtn.addEventListener('click', () => {
+    form.classList.remove('hidden');
+    showBtn.style.display = 'none';
+  });
+});
+
