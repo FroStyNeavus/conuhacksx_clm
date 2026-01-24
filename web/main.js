@@ -15,7 +15,7 @@ const LOG_MESSAGE = {
 
 const MAP_CONFIG = {
   zoom: 12,
-  center: { lat: -25.344, lng: 131.031 },
+  center: { lat: 45.508, lng: -73.561 },
   mapId: "DEMO_MAP_ID",
 };
 
@@ -146,6 +146,37 @@ class MapManagerSingleton {
    * Utilize Golgle Places API
    * @returns {Promise<Array>} List of nearby commodities
    */
+
+  toGrid(gridSize) {
+    const bounds = this.map.getBounds();
+    const ne = bounds.getNorthEast();
+    const sw = bounds.getSouthWest();
+
+    const latDiff = ne.lat() - sw.lat();
+    const lngDiff = ne.lng() - sw.lng();
+
+    const latStep = latDiff / gridSize;
+    const lngStep = lngDiff / gridSize;
+
+    const cells = [];
+
+    for (let row = 0; row < gridSize; row++) {
+      for (let col = 0; col < gridSize; col++) {
+        cells.push({
+          ne: {
+            lat: ne.lat() - (row * latStep),
+            lng: sw.lng() + ((col + 1) * lngStep)
+          },
+          sw: {
+            lat: ne.lat() - ((row + 1) * latStep),
+            lng: sw.lng() + (col * lngStep)
+          }
+        });
+      }
+    }
+
+    return cells;
+  }
 
   async getCommodities() {
     try {
@@ -328,6 +359,14 @@ document.addEventListener("DOMContentLoaded", () => {
   showBtn.addEventListener('click', () => {
     form.classList.remove('hidden');
     showBtn.style.display = 'none';
+  });
+  
+  // Handle scan button click to print grid cells
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const cells = MapManager.toGrid(4);
+    console.log("Map Grid Cells:", cells);
+    console.table(cells);
   });
 });
 
