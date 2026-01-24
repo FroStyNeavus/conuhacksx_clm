@@ -31,17 +31,13 @@ class Map{
     //setter
     setCenter(){
         if (this.gridSize > 0) {
-            if (this.gridSize % 2 === 1){
-                this.center =  (this.gridSize % 2) + 1;
-            }else{
-                this.center = (this.gridSize % 2);
-            }
+            this.center = Math.floor(this.gridSize/2)
         }
     }
 
     setGridSize(size){
         this.gridSize = size*size;
-        this.setCenter(this.gridSize);
+        this.setCenter();
     }
 
 
@@ -49,21 +45,26 @@ class Map{
     add(commodity, position){
         //Creates a set to store the commodity to the grid
         if (this.grid[position] === undefined) {
-            this.grid[position] = {};
+            this.grid[position] = [[], 0]; //add a score for later
         }
         //Push the commodity to the grid position
-        commidity.setGridPosition(position);
-        this.grid[position].push(commodity);
+        commodity.setGridPosition(position);
+        this.grid[position][0].push(commodity);
+        //Placeholder Calculate the score of the position
+        //this.grid[position][1].getScore() or smth of the sort
     }
 
 
 }
+
+//Ignore this part of the code
 class commodity{
     constructor(){
         this.GridPosition = 0;
         this.distance2Center = 0; //tileCenter
         this.distance2AbsCenter = 0; //GridCenter
         this.score = 0 //Out of 100?
+        this.userNeed = 0; //The dragbar
 
     }
     //Getter
