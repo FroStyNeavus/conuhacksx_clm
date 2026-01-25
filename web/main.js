@@ -113,18 +113,44 @@ class CommoditiesManager {
   static formatData(places) {
     if (!places || places.length === 0) return null;
 
-    const features = places.map((place) => ({
-      type: "Feature",
-      properties: {
-        name: place.displayName,
-        address: place.formattedAddress,
-        value: Math.floor(Math.random() * 100), // Mock commodity value (0-100)
-      },
-      geometry: {
-        type: "Point",
-        coordinates: [place.location.lng(), place.location.lat()],
-      },
-    }));
+    const features = places
+      .map((place) => {
+        // Support both Google Place objects (lat()/lng()) and Commodity objects (numeric lat/lng)
+        let lat;
+        let lng;
+
+        if (place && place.location) {
+          if (typeof place.location.lat === "function" && typeof place.location.lng === "function") {
+            lat = place.location.lat();
+            lng = place.location.lng();
+          } else if (typeof place.location.lat === "number" && typeof place.location.lng === "number") {
+            lat = place.location.lat;
+            lng = place.location.lng;
+          } else if (Array.isArray(place.location.coordinates) && place.location.coordinates.length >= 2) {
+            // GeoJSON-style coordinates: [lng, lat]
+            lng = place.location.coordinates[0];
+            lat = place.location.coordinates[1];
+          }
+        }
+
+        if (typeof lat !== "number" || typeof lng !== "number") {
+          return null; // Skip invalid entries without coordinates
+        }
+
+        return {
+          type: "Feature",
+          properties: {
+            name: place.displayName || "Unknown",
+            address: place.formattedAddress || "",
+            value: Math.floor(Math.random() * 100), // Mock commodity value (0-100)
+          },
+          geometry: {
+            type: "Point",
+            coordinates: [lng, lat],
+          },
+        };
+      })
+      .filter(Boolean);
 
     return {
       type: "FeatureCollection",
@@ -254,70 +280,66 @@ class MapManagerSingleton {
     return cells;
   }
 
-  async getCommodities(grid) {
+  async getCommodities(commodityTypes) {
     try {
       if (!this.map) {
         console.error("Map not initialized");
         return [];
       }
-      // Import required libraries
+
+      const center = this.map.getCenter();
+      const bounds = this.map.getBounds();
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+
+      // Calculate radius from map bounds
       const { spherical } = await google.maps.importLibrary("geometry");
-      const { Place } = await google.maps.importLibrary("places");
+      const diameter = spherical.computeDistanceBetween(ne, sw);
+      const radius = Math.min(diameter / 2, 50000);
 
-      // Divide map into smaller grid cells for more thorough search
-      const gridCells = grid || this.toGrid(4); // 2x2 = 4 cells
-      const types = [
-        "restaurant",
-        "gas_station",
-        "supermarket",
-        "pharmacy",
-        "school",
-      ];
-      const allPlaces = [];
-      const seenPlaceIds = new Set(); // Avoid duplicates
+      // Build query string with commodity types
+      const typeParams = commodityTypes && commodityTypes.length > 0 
+        ? `&types=${commodityTypes.join(',')}` 
+        : '';
 
-      // IMPORTANT: Customize the data fields here as per your requirements
-      for (const cell of gridCells) {
-        const cellCenter = {
-          lat: (cell.ne.lat + cell.sw.lat) / 2,
-          lng: (cell.ne.lng + cell.sw.lng) / 2,
-        };
+      // Fetch from backend API (DatabaseManager handles caching and Google API internally)
+      const response = await fetch(
+        `/api/commodities?lat=${center.lat()}&lng=${center.lng()}&radius=${radius}${typeParams}`
+      );
 
-        const cellNE = new google.maps.LatLng(cell.ne.lat, cell.ne.lng);
-        const cellSW = new google.maps.LatLng(cell.sw.lat, cell.sw.lng);
-        const cellDiameter = spherical.computeDistanceBetween(cellNE, cellSW);
-        const cellRadius = Math.min(cellDiameter / 2, 50000);
+      console.log("Fetched complete");
 
-        for (const type of types) {
-          const request = {
-            fields: [
-              "primaryType",
-              "displayName",
-              "location",
-              "formattedAddress",
-            ],
-            locationRestriction: { center: cellCenter, radius: cellRadius },
-            includedPrimaryTypes: [type], // Only search for the current type
-            maxResultCount: 20,
-          };
-          try {
-            const { places } = await Place.searchNearby(request);
-
-            // Filter out duplicates and add to results
-            places.forEach((place) => {
-              if (!seenPlaceIds.has(place.id)) {
-                // place.placeType = type;
-                let commodity = Commodity.fromPlace(place, type);
-                allPlaces.push(commodity);
-                seenPlaceIds.add(place.id);
-              }
-            });
-          } catch (typeError) {
-            console.error(`Error fetching ${type} in cell:`, typeError);
-          }
-        }
+      if (!response.ok) {
+        throw new Error(`API error: ${response.statusText}`);
       }
-      return allPlaces;
+
+      console.log(response);
+
+      const data = await response.json();
+      const places = data.places || [];
+
+      // Convert to Commodity objects
+      const commodities = places
+        .filter((place) =>
+          place && place.location && Array.isArray(place.location.coordinates) && place.location.coordinates.length >= 2
+        )
+        .map((place) =>
+          new Commodity(
+            {
+              id: place._id,
+              primaryType: place.commodityTypes?.[0] || "unknown",
+              displayName: place.displayName || "Unknown",
+              location: {
+                lat: () => place.location.coordinates[1],
+                lng: () => place.location.coordinates[0],
+              },
+              formattedAddress: place.formattedAddress || "",
+            },
+            place.commodityTypes?.[0] || "unknown"
+          )
+        );
+
+      return commodities;
     } catch (error) {
       console.error("Error fetching commodities:", error);
       return [];
@@ -723,6 +745,7 @@ class MapManagerSingleton {
   }
 
   async scanCurrentView(commodityPreferences) {
+<<<<<<< HEAD
     showLoading();
     try {
       // Create the grid
@@ -802,6 +825,16 @@ class MapManagerSingleton {
     } finally {
       hideLoading();
     }
+=======
+    // Extract commodity types with non-zero values
+    const commodityTypes = Object.keys(commodityPreferences).filter(
+      type => commodityPreferences[type] > 0
+    );
+    
+    const data = await this.getCommodities(commodityTypes);
+    // TODO: Pass data and commodityPreferences to scoring/calculation function
+    return { data, commodityPreferences };
+>>>>>>> ea34776 (Adding caching to commodities fetching.)
   }
 }
 
@@ -922,6 +955,7 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("Commodity Preferences:", commodityPreferences);
 
     // Pass preferences to map manager
+<<<<<<< HEAD
     const arrayOfCellsWithScore =
       await MapManager.scanCurrentView(commodityPreferences);
     console.log("Array of cells with score:", arrayOfCellsWithScore);
@@ -931,6 +965,24 @@ document.addEventListener("DOMContentLoaded", () => {
       arrayOfCellsWithScore,
       Math.sqrt(arrayOfCellsWithScore.length),
     );
+=======
+    const { data } = await MapManager.scanCurrentView(commodityPreferences);
+    console.log("Scan complete. Places:", Array.isArray(data) ? data.length : 0);
+    if (Array.isArray(data)) {
+      const preview = data.map((p) => ({
+        id: p.id,
+        name: p.displayName,
+        type: p.primaryType,
+        lat: p.location?.lat,
+        lng: p.location?.lng,
+        address: p.formattedAddress,
+      }));
+      console.table(preview);
+      console.log("Full data array:", data);
+    }
+    MapManager.updateVisualization(data);
+
+>>>>>>> ea34776 (Adding caching to commodities fetching.)
   });
 });
 

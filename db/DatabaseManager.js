@@ -18,9 +18,9 @@ class CacheManager {
         this.cacheTTL = cacheTTL;
     }
     /**
-     * Check if grid cells around center are cached (center + 8 neighbors)
+     * Check which grid cells around center are cached (center + 8 neighbors)
      * @param {string} centerGridId - Center geohash grid ID
-     * @returns {Promise<Array>} Array of cached grid IDs
+     * @returns {Promise<Array<string>>} Array of geohash strings for cached grids (empty array if none cached)
      */
     async isCachedInRadius(centerGridId) {
         try {
@@ -35,8 +35,16 @@ class CacheManager {
                 expiresAt: { $gt: new Date() }
             });
 
-            return cachedGrids.map(g => g.geohash);
+
+            // Case: when no cached grids found, return empty array
+            if (!Array.isArray(cachedGrids)) {
+                return [];
+            } else {
+                // Return just the geohash strings, not full documents
+                return cachedGrids.map(g => g.geohash);
+            }
         } catch (error) {
+            console.error(`Error checking cached grids: ${error.message}`);
             return [];
         }
     }
@@ -59,36 +67,94 @@ class CacheManager {
     }
 
     /**
-     * Get places from database (cache hit)
-     * @param {string} gridId - Geohash grid ID
-     * @returns {Promise<Array>} Cached places
+     * Fetch places from Google Places API
+     * @param {number} lat - Center latitude
+     * @param {number} lng - Center longitude
+     * @param {number} radiusMeters - Search radius in meters
+     * @param {string} commodityType - Commodity type to search
+     * @returns {Promise<Array>} Places from Google Places API
      */
-    async getFromDB(gridId) {
-        return this.getPlaces(gridId);
+    async fetchFromGooglePlaces(lat, lng, radiusMeters, commodityType) {
+        try {
+            const GOOGLE_API_KEY = 'AIzaSyAjFKhI4aA7ITiIOo2_Q_yqvU_obcNuR14';
+
+
+            const url = `https://places.googleapis.com/v1/places:searchNearby`;
+
+            const requestBody = {
+                locationRestriction: {
+                    circle: {
+                        center: {
+                            latitude: lat,
+                            longitude: lng
+                        },
+                        radius: radiusMeters
+                    }
+                },
+                includedTypes: [commodityType],
+                maxResultCount: 20,
+                languageCode: 'en'
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Goog-Api-Key': GOOGLE_API_KEY,
+                    'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location,places.id,places.types'
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                console.error(`Google Places API error: ${response.status} ${response.statusText}`);
+                const errorBody = await response.text();
+                console.error(`Error response: ${errorBody}`);
+                return [];
+            }
+
+            const data = await response.json();
+            const places = data.places || [];
+
+            // Convert Google Places format to database format
+            return places.map(place => ({
+                _id: place.id,
+                place_id: place.id,
+                displayName: place.displayName?.text || place.name || 'Unknown',
+                location: {
+                    type: 'Point',
+                    coordinates: [place.location.longitude, place.location.latitude]
+                },
+                commodityTypes: [commodityType],
+                formattedAddress: place.formattedAddress || '',
+                fetchedAt: new Date()
+            }));
+        } catch (error) {
+            console.error(`Error fetching from Google Places API: ${error.message}`);
+            return [];
+        }
     }
 
     /**
-     * Get places from API (cache miss)
-     * @param {Function} googleFetchFn - Async function to fetch from Google API
-     * @param {number} lat - Latitude
-     * @param {number} lng - Longitude
+     * Get all places within a radius (from all grids)
+     * @param {number} lat - Center latitude
+     * @param {number} lng - Center longitude
      * @param {number} radiusMeters - Search radius
-     * @param {string} commodityType - Commodity type
-     * @returns {Promise<Array>} Places from API
+     * @param {string} commodityType - Optional: filter by commodity type
+     * @returns {Promise<Array>} All places within radius
      */
-    async getFromAPI(googleFetchFn, lat, lng, radiusMeters, commodityType) {
-        return await googleFetchFn(lat, lng, radiusMeters, commodityType);
+    async getPlacesInRadius(lat, lng, radiusMeters, commodityType = null) {
+        try {
+            const gridsInRadius = this.geohashManager.getGridsInRadius(lat, lng, radiusMeters);
+            const query = { geohash: { $in: gridsInRadius } };
+            if (commodityType) query.commodityTypes = commodityType;
+
+            return await Place.find(query);
+        } catch (error) {
+            return [];
+        }
     }
 
-    /**
-     * Store fetched places in cache
-     * @param {string} gridId - Geohash grid ID
-     * @param {Array} places - Places from Google Places API
-     * @param {string} commodityType - Commodity type
-     * @param {number} centerLat - Grid center latitude
-     * @param {number} centerLng - Grid center longitude
-     * @returns {Promise<void>}
-     */
     async storePlaces(gridId, places, commodityType, centerLat, centerLng) {
         try {
             const placesWithGeohash = places.map(place => ({
@@ -196,6 +262,7 @@ class GeohashManager {
         return [...new Set(grids)];
     }
 }
+
 class DataManager {
     constructor() {
         this.gridPrecision = config.gridPrecision;
@@ -206,40 +273,48 @@ class DataManager {
 
     /**
      * Main fetch function: Get places from all grids in radius
-     * For each grid: if cached use cache, if not cached fetch from API and cache it
+     * Uses 2-level strategy: check cached grids first, fetch from API for uncached grids
      * @param {number} lat - Latitude
      * @param {number} lng - Longitude
      * @param {number} radiusMeters - Search radius
      * @param {string} commodityType - Type of place to fetch
-     * @param {Function} googleFetchFn - Async function to fetch from Google API
      * @returns {Promise<Object>} { places, cachedGrids, newGrids, gridId }
      */
-    async fetchData(lat, lng, radiusMeters, commodityType, googleFetchFn) {
+    async fetchData(lat, lng, radiusMeters, commodityType) {
         try {
-            // Get all grids within the radius
-            const gridsInRadius = this.geohashManager.getGridsInRadius(lat, lng, radiusMeters);
             const centerGridId = this.geohashManager.getHash(lat, lng);
+            const gridsInRadius = this.geohashManager.getGridsInRadius(lat, lng, radiusMeters);
 
+            // Get all cached grids in this radius
+            const cachedGridIds = await this.cacheManager.isCachedInRadius(centerGridId);
             const allPlaces = [];
-            const cachedGridIds = [];
+
+            // Get all places from cached grids
+            if (cachedGridIds.length > 0) {
+                console.log(`✓ Cache hit: Found ${cachedGridIds.length} cached grids for ${commodityType}`);
+                const cachedPlaces = await Place.find({
+                    geohash: { $in: cachedGridIds },
+                    commodityTypes: commodityType
+                });
+                allPlaces.push(...cachedPlaces);
+            }
+
+            // Identify uncached grids
+            const uncachedGridIds = gridsInRadius.filter(g => !cachedGridIds.includes(g));
             const newGridIds = [];
 
-            // Process each grid in the radius
-            for (const gridId of gridsInRadius) {
-                // Check if grid is cached
-                if (await this.cacheManager.isCached(gridId)) {
-                    cachedGridIds.push(gridId);
-                    const places = await this.cacheManager.getFromDB(gridId);
-                    allPlaces.push(...places);
-                } else {
-                    // Grid not cached - fetch from API and cache it
-                    const places = await this.cacheManager.getFromAPI(googleFetchFn, lat, lng, radiusMeters, commodityType);
+            // Fetch from API for any uncached grids
+            if (uncachedGridIds.length > 0) {
+                console.log(`⚡ API call: Fetching ${uncachedGridIds.length} uncached grids for ${commodityType} from Google Places API`);
+                const apiPlaces = await this.cacheManager.fetchFromGooglePlaces(lat, lng, radiusMeters, commodityType);
 
-                    if (places && places.length > 0) {
-                        await this.cacheManager.storePlaces(gridId, places, commodityType, lat, lng);
+                if (apiPlaces && apiPlaces.length > 0) {
+                    // Cache the new places for each uncached grid
+                    for (const gridId of uncachedGridIds) {
+                        await this.cacheManager.storePlaces(gridId, apiPlaces, commodityType, lat, lng);
                         newGridIds.push(gridId);
-                        allPlaces.push(...places);
                     }
+                    allPlaces.push(...apiPlaces);
                 }
             }
 
@@ -278,3 +353,4 @@ class DataManager {
 }
 
 module.exports = DataManager;
+module.exports.default = DataManager;

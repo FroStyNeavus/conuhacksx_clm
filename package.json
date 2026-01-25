@@ -10,7 +10,7 @@
   "dependencies": {
     "mongoose": "^8.0.0",
     "dotenv": "^16.3.1",
-    "ngeohash": "^0.2.0"
+    "ngeohash": "^0.6.3"
   },
   "keywords": [],
   "author": "",
