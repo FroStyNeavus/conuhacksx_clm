@@ -943,31 +943,31 @@ document.addEventListener("DOMContentLoaded", () => {
     const commodityPreferences = getCommodityPreferences();
     console.log("Commodity Preferences:", commodityPreferences);
 
-    // Pass preferences to map manager
-    const arrayOfCellsWithScore =
-      await MapManager.scanCurrentView(commodityPreferences);
-    console.log("Array of cells with score:", arrayOfCellsWithScore);
+    // // Pass preferences to map manager
+    // const arrayOfCellsWithScore =
+    //   await MapManager.scanCurrentView(commodityPreferences);
+    // console.log("Array of cells with score:", arrayOfCellsWithScore);
 
-    // const mockData = MapManager.generateMockRatedCells(4);
-    MapManager.displayHeatmap(
-      arrayOfCellsWithScore,
-      Math.sqrt(arrayOfCellsWithScore.length),
-    );
-    const { data } = await MapManager.scanCurrentView(commodityPreferences);
-    console.log("Scan complete. Places:", Array.isArray(data) ? data.length : 0);
-    if (Array.isArray(data)) {
-      const preview = data.map((p) => ({
-        id: p.id,
-        name: p.displayName,
-        type: p.primaryType,
-        lat: p.location?.lat,
-        lng: p.location?.lng,
-        address: p.formattedAddress,
-      }));
-      console.table(preview);
-      console.log("Full data array:", data);
-    }
-    MapManager.updateVisualization(data);
+    // // const mockData = MapManager.generateMockRatedCells(4);
+    // MapManager.displayHeatmap(
+    //   arrayOfCellsWithScore,
+    //   Math.sqrt(arrayOfCellsWithScore.length),
+    // );
+    // const { data } = await MapManager.scanCurrentView(commodityPreferences);
+    // console.log("Scan complete. Places:", Array.isArray(data) ? data.length : 0);
+    // if (Array.isArray(data)) {
+    //   const preview = data.map((p) => ({
+    //     id: p.id,
+    //     name: p.displayName,
+    //     type: p.primaryType,
+    //     lat: p.location?.lat,
+    //     lng: p.location?.lng,
+    //     address: p.formattedAddress,
+    //   }));
+    //   console.table(preview);
+    //   console.log("Full data array:", data);
+    // }
+    // MapManager.updateVisualization(data);
 
   });
 });
