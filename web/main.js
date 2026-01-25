@@ -325,6 +325,71 @@ class MapManagerSingleton {
   }
 
   /**
+   * Display heatmap from backend cell ratings
+   * Call this method once your backend sends back the scored cells
+   * @param {Array} ratedCells - From backend: [{cellIndex: 0, rating: 85}, ...]
+   * @param {number} gridSize - Grid dimension (default 4)
+   */
+  displayHeatmap(ratedCells, gridSize = 4) {
+    console.log("Displaying heatmap with", ratedCells.length, "cells");
+    this.createHeatmapFromCells(ratedCells, gridSize);
+  }
+
+  /**
+   * Create heatmap layer from backend cell ratings
+   * @param {Array} ratedCells - From backend: [{cellIndex: 0, rating: 85}, ...]
+   * @param {number} gridSize - Grid dimension (default 4)
+   */
+  createHeatmapFromCells(ratedCells, gridSize) {
+    // get all cell boundaries
+    const cells = this.toGrid(gridSize);
+
+    // convert go geojson polygons
+    const features = ratedCells.map(ratedCell => {
+      const cell = cells[ratedCell.cellIndex];
+
+      return {
+        type: "Feature",
+        properties: {
+          rating: ratedCell.rating,
+          cellIndex: ratedCell.cellIndex
+        },
+        geometry: {
+          type: "Polygon",
+          coordinates: [[
+            [cell.sw.lng, cell.sw.lat], //sw corner
+            [cell.ne.lng, cell.sw.lat],
+            [cell.ne.lng, cell.ne.lat],
+            [cell.sw.lng, cell.ne.lat],
+            [cell.sw.lng, cell.sw.lat]
+          ]]
+        }
+      };
+    });
+
+    const heatmapLayer = new deck.GeoJsonLayer({
+      id: "heatmap",
+      data: { type: "FeatureCollection", features },
+      filled: true,
+      stroked: true,
+      getLineColor: [0, 0, 0, 255],
+      getLineWidth: 2,
+      getFillColor: (f) => {
+        const rating = f.properties.rating;
+        // Color scale: red (bad) to green ( good)
+        if (rating > 75) return [0, 255, 0, 180];
+        if (rating > 50) return [255, 255, 0, 180];
+        if (rating > 25) return [255, 165, 0, 180];
+        return [255, 0, 0, 180];
+      }
+    });
+
+    if (this.deckGLInstance) {
+      this.deckGLInstance.setProps({ layers: [heatmapLayer] });
+    }
+  }
+
+  /**
    * Commodities data are already loaded at this point, only initialize the overlay
    */
   async initializeOverlay() {
