@@ -744,98 +744,87 @@ class MapManagerSingleton {
     }
   }
 
-  async scanCurrentView(commodityPreferences) {
-<<<<<<< HEAD
-    showLoading();
-    try {
-      // Create the grid
-      const gridSize = 5;
-      const grid = this.toGrid(gridSize);
-      // Fetch the commodity data
-      const data = await this.getCommodities(grid);
+  // async scanCurrentView(commodityPreferences) {
+  //   showLoading();
+  //   try {
+  //     // Create the grid
+  //     const gridSize = 5;
+  //     const grid = this.toGrid(gridSize);
+  //     // Fetch the commodity data
+  //     const data = await this.getCommodities(grid);
 
-      console.log(data);
+  //     console.log(data);
 
-      const typeOrder = [
-        "restaurant",
-        "gas_station",
-        "supermarket",
-        "pharmacy",
-        "school",
-      ];
+  //     const typeOrder = [
+  //       "restaurant",
+  //       "gas_station",
+  //       "supermarket",
+  //       "pharmacy",
+  //       "school",
+  //     ];
 
-    const scoringMap = new ScoringMap();
-    scoringMap.setGridSize(gridSize);
+  //   const scoringMap = new ScoringMap();
+  //   scoringMap.setGridSize(gridSize);
 
-    grid.forEach((cellBounds, index) => {
-      const c = new cell();
-      c.setPosition(index);
-      c.setCoords({
-        topright: [cellBounds.ne.lng, cellBounds.ne.lat],
-        bottomleft: [cellBounds.sw.lng, cellBounds.sw.lat],
-      });
-      typeOrder.forEach((_, i) => c.setCommodities(0, i));
-      scoringMap.addCell(c, index);
-    });
+  //   grid.forEach((cellBounds, index) => {
+  //     const c = new cell();
+  //     c.setPosition(index);
+  //     c.setCoords({
+  //       topright: [cellBounds.ne.lng, cellBounds.ne.lat],
+  //       bottomleft: [cellBounds.sw.lng, cellBounds.sw.lat],
+  //     });
+  //     typeOrder.forEach((_, i) => c.setCommodities(0, i));
+  //     scoringMap.addCell(c, index);
+  //   });
 
-    data.forEach((place) => {
-      const typeIndex = typeOrder.indexOf(place.placeType);
-      if (typeIndex === -1) return;
-      for (let i = 0; i < grid.length; i++) {
-        const cellBounds = grid[i];
-        const lat = place.location.lat;
-        const lng = place.location.lng;
-        if (
-          lat >= cellBounds.sw.lat &&
-          lat <= cellBounds.ne.lat &&
-          lng >= cellBounds.sw.lng &&
-          lng <= cellBounds.ne.lng
-        ) {
-          const cellObj = scoringMap.getCell(i);
-          const current = cellObj.getCommodities()[typeIndex] || 0;
-          cellObj.setCommodities(current + 1, typeIndex);
-          break;
-        }
-      }
-    });
+  //   data.forEach((place) => {
+  //     const typeIndex = typeOrder.indexOf(place.placeType);
+  //     if (typeIndex === -1) return;
+  //     for (let i = 0; i < grid.length; i++) {
+  //       const cellBounds = grid[i];
+  //       const lat = place.location.lat;
+  //       const lng = place.location.lng;
+  //       if (
+  //         lat >= cellBounds.sw.lat &&
+  //         lat <= cellBounds.ne.lat &&
+  //         lng >= cellBounds.sw.lng &&
+  //         lng <= cellBounds.ne.lng
+  //       ) {
+  //         const cellObj = scoringMap.getCell(i);
+  //         const current = cellObj.getCommodities()[typeIndex] || 0;
+  //         cellObj.setCommodities(current + 1, typeIndex);
+  //         break;
+  //       }
+  //     }
+  //   });
 
-    const weights = typeOrder.map((t) => {
-      const v = commodityPreferences?.[t];
-      const num = typeof v === "number" ? v : parseFloat(v);
-      return Number.isFinite(num) ? num : 0;
-    });
-    scoringMap.setWeight(weights);
+  //   const weights = typeOrder.map((t) => {
+  //     const v = commodityPreferences?.[t];
+  //     const num = typeof v === "number" ? v : parseFloat(v);
+  //     return Number.isFinite(num) ? num : 0;
+  //   });
+  //   scoringMap.setWeight(weights);
 
-      const scorer = new CommodityScorer();
-      scoringMap.calculateScores(scorer);
+  //     const scorer = new CommodityScorer();
+  //     scoringMap.calculateScores(scorer);
 
-    const aggregated = scoringMap
-      .getScoresArray({ type: "aggregated", includeNulls: true })
-      .map((v) => (v ?? 0));
-    return aggregated;
-    showLoading();
-    try {
-      const grid = this.toGrid(5);
-      const data = await this.getCommodities(grid);
-      console.log(data);
-      // TEMPORARY: We actually need to return an array that represents the grid with scores (Howard's part)
-      // TODO: Howard, please design a way for me to pass in grid, data, and commodityPreferences to your calculation function
-      // and return the proper scores for each cell in the grid.
-      return { grid, data, commodityPreferences };
-    } finally {
-      hideLoading();
-    }
-=======
-    // Extract commodity types with non-zero values
-    const commodityTypes = Object.keys(commodityPreferences).filter(
-      type => commodityPreferences[type] > 0
-    );
-    
-    const data = await this.getCommodities(commodityTypes);
-    // TODO: Pass data and commodityPreferences to scoring/calculation function
-    return { data, commodityPreferences };
->>>>>>> ea34776 (Adding caching to commodities fetching.)
-  }
+  //   const aggregated = scoringMap
+  //     .getScoresArray({ type: "aggregated", includeNulls: true })
+  //     .map((v) => (v ?? 0));
+  //   return aggregated;
+  //   showLoading();
+  //   try {
+  //     const grid = this.toGrid(5);
+  //     const data = await this.getCommodities(grid);
+  //     console.log(data);
+  //     // TEMPORARY: We actually need to return an array that represents the grid with scores (Howard's part)
+  //     // TODO: Howard, please design a way for me to pass in grid, data, and commodityPreferences to your calculation function
+  //     // and return the proper scores for each cell in the grid.
+  //     return { grid, data, commodityPreferences };
+  //   } finally {
+  //     hideLoading();
+  //   }
+  // }
 }
 
 // Create singleton instance
