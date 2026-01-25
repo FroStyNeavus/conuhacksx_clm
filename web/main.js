@@ -633,10 +633,14 @@ class MapManagerSingleton {
     const scorer = new CommodityScorer();
     scoringMap.calculateScores(scorer);
 
+    const base = scoringMap
+      .getScoresArray({ type: "base", includeNulls: true })
+      .map((v) => (v ?? 0));
     const aggregated = scoringMap
       .getScoresArray({ type: "aggregated", includeNulls: true })
       .map((v) => (v ?? 0));
-    return aggregated;
+    
+    return { base, aggregated };
   }
 }
 
