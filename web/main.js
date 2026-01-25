@@ -464,12 +464,14 @@ class MapManagerSingleton {
     }
   }
 
-  async scanCurrentView() {
+  async scanCurrentView(commodityPreferences) {
     const grid = this.toGrid(5);
     const data = await this.getCommodities(grid);
     console.log(data);
-    return { grid, data };
-    // return grid;
+    // TEMPORARY: We actually need to return an array that represents the grid with scores (Howard's part)
+    // TODO: Howard, please design a way for me to pass in grid, data, and commodityPreferences to your calculation function
+    // and return the proper scores for each cell in the grid.
+    return { grid, data, commodityPreferences };
   }
 }
 
@@ -553,7 +555,7 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("Commodity Preferences:", commodityPreferences);
 
     // Pass preferences to map manager
-    await MapManager.scanCurrentView();
+    await MapManager.scanCurrentView(commodityPreferences);
   });
 });
 
