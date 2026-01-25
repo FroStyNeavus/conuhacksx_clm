@@ -69,6 +69,21 @@
 
 class CommodityScorer {
     /**
+     * METHODS SUMMARY:
+     * ================
+     * • constructor(config) - Initialize scorer with distance, decay, and amplification settings
+     * • calculateDistance(point1, point2) - Haversine distance between two lat/lng points (meters)
+     * • calculateScoreDecay(distance) - Exponential decay factor (0-1) based on distance
+     * • calculateVarianceMultipliers(weights) - Amplify outlier weights using z-score
+     * • calculateGridScore(gridData, weights, amplifiedWeights) - Base score for single grid
+     * • calculateAllBaseScores(gridMap, weights, amplifiedWeights) - Base scores for all grids
+     * • calculateAggregatedScore(targetGridId, gridMap, weights, baseScores, amplifiedWeights) - Score with neighbor influence
+     * • calculateAllAggregatedScores(gridMap, weights, baseScores, amplifiedWeights) - Aggregated scores for all grids
+     * • getHeatmapData(gridMap, weights) - Format grid scores for heatmap visualization
+     * • getSummary(gridMap, weights) - Statistical summary (mean, min, max, median)
+     */
+
+    /**
      * @param {Object} config
      * @param {number} config.maxDistance   Maximum distance (m) to consider neighbors (default: 5000)
      * @param {number} config.decayFactor   Steepness of exponential score decay (default: 2, higher = steeper)
@@ -77,7 +92,7 @@ class CommodityScorer {
     constructor(config = {}) {
         this.maxDistance = config.maxDistance || 5000;
         this.decayFactor = config.decayFactor || 2;
-        this.varianceAmplification = config.varianceAmplification || 2;
+        this.varianceAmplification = config.varianceAmplification || 1.5;
     }
 
     /**
