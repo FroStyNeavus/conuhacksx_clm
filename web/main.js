@@ -955,7 +955,6 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("Commodity Preferences:", commodityPreferences);
 
     // Pass preferences to map manager
-<<<<<<< HEAD
     const arrayOfCellsWithScore =
       await MapManager.scanCurrentView(commodityPreferences);
     console.log("Array of cells with score:", arrayOfCellsWithScore);
@@ -965,7 +964,6 @@ document.addEventListener("DOMContentLoaded", () => {
       arrayOfCellsWithScore,
       Math.sqrt(arrayOfCellsWithScore.length),
     );
-=======
     const { data } = await MapManager.scanCurrentView(commodityPreferences);
     console.log("Scan complete. Places:", Array.isArray(data) ? data.length : 0);
     if (Array.isArray(data)) {
@@ -982,7 +980,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     MapManager.updateVisualization(data);
 
->>>>>>> ea34776 (Adding caching to commodities fetching.)
   });
 });
 
