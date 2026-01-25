@@ -22,6 +22,25 @@ class ScoringMap{
     getCell(position){
         return this.grid[position];
     }
+    
+    getAllScores(){
+        return this.grid.map(cell => cell ? cell.getScores() : null);
+    }
+
+    getBaseScores(){
+        return this.grid.map(cell => cell ? cell.getScore() : null);
+    }
+
+    getAggregatedScores(){
+        return this.grid.map(cell => cell ? cell.getAggregatedScore() : null);
+    }
+
+    getScoresArray({ type = "base", includeNulls = false } = {}){
+        const arr = type === "aggregated"
+            ? this.grid.map(cell => cell ? cell.getAggregatedScore() : null)
+            : this.grid.map(cell => cell ? cell.getScore() : null);
+        return includeNulls ? arr : arr.filter(v => v !== null && v !== undefined);
+    }
 
     //setter
     setCenter(){
@@ -43,9 +62,6 @@ class ScoringMap{
         this.grid[position] = cell;
     }
 
-    getAllScores(){
-        return this.grid.map(cell => cell ? cell.getScores() : null);
-    }
 
     /**
      * Send data to scorer for processing
