@@ -1,19 +1,44 @@
 services:
-    web:
-        build: .
-        command: npm start
-        develop:
-          watch:
-            - action: sync
-              path: ./web
-              target: /src/web
-              ignore:
-                - node_modules/
-            - action: rebuild
-              path: package.json
-        ports:
-            - "9000:9000"
-        volumes:
-            - ./web:/src/web
-        environment:
-            - NODE_ENV=development
+  web:
+    build: .
+    command: npm start
+    depends_on:
+      - mongo
+    develop:
+      watch:
+        - action: sync
+          path: ./web
+          target: /src/web
+          ignore:
+            - node_modules/
+        - action: sync
+          path: ./db
+          target: /src/db
+        - action: sync
+          path: ./config
+          target: /src/config
+        - action: rebuild
+          path: package.json
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./web:/src/web
+      - ./db:/src/db
+      - ./config:/src/config
+    environment:
+      - NODE_ENV=development
+      - MONGODB_URI=mongodb://mongo:27017/appdb
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_DATABASE=appdb
+    command: ["mongod", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:

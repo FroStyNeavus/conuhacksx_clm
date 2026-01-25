@@ -14,7 +14,7 @@ const LOG_MESSAGE = {
 };
 
 const MAP_CONFIG = {
-  zoom: 12,
+  zoom: 15,
   center: { lat: 45.508, lng: -73.561 },
   mapId: "DEMO_MAP_ID",
 };
@@ -113,18 +113,44 @@ class CommoditiesManager {
   static formatData(places) {
     if (!places || places.length === 0) return null;
 
-    const features = places.map((place) => ({
-      type: "Feature",
-      properties: {
-        name: place.displayName,
-        address: place.formattedAddress,
-        value: Math.floor(Math.random() * 100), // Mock commodity value (0-100)
-      },
-      geometry: {
-        type: "Point",
-        coordinates: [place.location.lng(), place.location.lat()],
-      },
-    }));
+    const features = places
+      .map((place) => {
+        // Support both Google Place objects (lat()/lng()) and Commodity objects (numeric lat/lng)
+        let lat;
+        let lng;
+
+        if (place && place.location) {
+          if (typeof place.location.lat === "function" && typeof place.location.lng === "function") {
+            lat = place.location.lat();
+            lng = place.location.lng();
+          } else if (typeof place.location.lat === "number" && typeof place.location.lng === "number") {
+            lat = place.location.lat;
+            lng = place.location.lng;
+          } else if (Array.isArray(place.location.coordinates) && place.location.coordinates.length >= 2) {
+            // GeoJSON-style coordinates: [lng, lat]
+            lng = place.location.coordinates[0];
+            lat = place.location.coordinates[1];
+          }
+        }
+
+        if (typeof lat !== "number" || typeof lng !== "number") {
+          return null; // Skip invalid entries without coordinates
+        }
+
+        return {
+          type: "Feature",
+          properties: {
+            name: place.displayName || "Unknown",
+            address: place.formattedAddress || "",
+            value: Math.floor(Math.random() * 100), // Mock commodity value (0-100)
+          },
+          geometry: {
+            type: "Point",
+            coordinates: [lng, lat],
+          },
+        };
+      })
+      .filter(Boolean);
 
     return {
       type: "FeatureCollection",
@@ -142,6 +168,7 @@ class MapManagerSingleton {
     this.map = null;
     this.commoditiesData = [];
     this.deckGLInstance = null;
+    this.idleTimeout = null; // For debouncing map idle event
   }
 
   /**
@@ -160,25 +187,33 @@ class MapManagerSingleton {
         console.log("Overlay initialized, fetching initial data...");
 
         // Fetch initial data after overlay is ready
-        this.commoditiesData = await this.getCommodities();
-        console.log(
-          "Initial commodities data fetched:",
-          this.commoditiesData?.length || 0,
-          "places",
-        );
+        // const { grid, data } = await this.getCommodities();
+        // this.commoditiesData = data;
+        // console.log(
+        //   "Initial commodities data fetched:",
+        //   this.commoditiesData?.length || 0,
+        //   "places",
+        // );
 
-        this.updateVisualization(this.commoditiesData);
-        console.log("Initial visualization updated");
+        // this.updateVisualization(this.commoditiesData);
+        // console.log("Initial visualization updated");
       } catch (overlayError) {
         console.error("Error initializing overlay:", overlayError);
       }
       // !IMPORTANT: State change listener for any data updates, fetching, etc.
-      google.maps.event.addListener(this.map, "idle", async () => {
-        console.log("Map idle event triggered");
-        this.commoditiesData = await this.getCommodities();
-        console.log(this.commoditiesData);
-        // this.updateVisualization(this.commoditiesData);
-      });
+      // Debounced idle event - waits 2 seconds after map stops moving
+      // google.maps.event.addListener(this.map, "idle", () => {
+      //   // Clear any existing timeout
+      //   if (this.idleTimeout) {
+      //     clearTimeout(this.idleTimeout);
+      //   }
+
+      //   // Set a new timeout for 2 seconds
+      //   this.idleTimeout = setTimeout(() => {
+      //     console.log("Map idle for 2 seconds, triggering scan...");
+      //     this.scanCurrentView();
+      //   }, 2000); // 2 second delay
+      // });
 
       console.log(LOG_MESSAGE.GOOGLE_API_LOADED); //TODO: Remove log
     } catch (error) {
@@ -245,89 +280,279 @@ class MapManagerSingleton {
     return cells;
   }
 
-  async getCommodities() {
+  async getCommodities(commodityTypes) {
     try {
       if (!this.map) {
         console.error("Map not initialized");
         return [];
       }
-      // Import required libraries
+
+      const center = this.map.getCenter();
+      const bounds = this.map.getBounds();
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+
+      // Calculate radius from map bounds
       const { spherical } = await google.maps.importLibrary("geometry");
-      const { Place } = await google.maps.importLibrary("places");
+      const diameter = spherical.computeDistanceBetween(ne, sw);
+      const radius = Math.min(diameter / 2, 50000);
 
-      // let bounds = this.map.getBounds();
-      // const ne = bounds.getNorthEast();
-      // const sw = bounds.getSouthWest();
+      // Build query string with commodity types
+      const typeParams = commodityTypes && commodityTypes.length > 0 
+        ? `&types=${commodityTypes.join(',')}` 
+        : '';
 
-      // Divide map into smaller grid cells for more thorough search
-      const gridCells = this.toGrid(2); // 2x2 = 4 cells
-      const types = [
-        "restaurant",
-        "gas_station",
-        "supermarket",
-        "pharmacy",
-        "school",
-      ];
-      const allPlaces = [];
-      const seenPlaceIds = new Set(); // Avoid duplicates
+      // Fetch from backend API (DatabaseManager handles caching and Google API internally)
+      const response = await fetch(
+        `/api/commodities?lat=${center.lat()}&lng=${center.lng()}&radius=${radius}${typeParams}`
+      );
 
-      // IMPORTANT: Customize the data fields here as per your requirements
-      for (const cell of gridCells) {
-        const cellCenter = {
-          lat: (cell.ne.lat + cell.sw.lat) / 2,
-          lng: (cell.ne.lng + cell.sw.lng) / 2,
-        };
+      console.log("Fetched complete");
 
-        const cellNE = new google.maps.LatLng(cell.ne.lat, cell.ne.lng);
-        const cellSW = new google.maps.LatLng(cell.sw.lat, cell.sw.lng);
-        const cellDiameter = spherical.computeDistanceBetween(cellNE, cellSW);
-        const cellRadius = Math.min(cellDiameter / 2, 50000);
-
-        for (const type of types) {
-          const request = {
-            fields: [
-              "primaryType",
-              "displayName",
-              "location",
-              "formattedAddress",
-            ],
-            locationRestriction: { center: cellCenter, radius: cellRadius },
-            includedPrimaryTypes: [
-              "restaurant",
-              "gas_station",
-              "supermarket",
-              "pharmacy",
-              "school",
-            ],
-            maxResultCount: 20,
-          };
-          try {
-            const { places } = await Place.searchNearby(request);
-
-            // Filter out duplicates and add to results
-            places.forEach((place) => {
-              if (!seenPlaceIds.has(place.id)) {
-                // place.placeType = type;
-                let commodity = Commodity.fromPlace(place, type);
-                allPlaces.push(commodity);
-                seenPlaceIds.add(place.id);
-              }
-            });
-          } catch (typeError) {
-            console.error(`Error fetching ${type} in cell:`, typeError);
-          }
-        }
+      if (!response.ok) {
+        throw new Error(`API error: ${response.statusText}`);
       }
 
-      // Search nearby places based on the request
-      // console.log("Searching for nearby places with radius:", radius);
-      // const { places } = await Place.searchNearby(request);
-      // console.log("Nearby places found:", places.length);
-      // console.log("Places data:", places);
-      return allPlaces;
+      console.log(response);
+
+      const data = await response.json();
+      const places = data.places || [];
+
+      // Convert to Commodity objects
+      const commodities = places
+        .filter((place) =>
+          place && place.location && Array.isArray(place.location.coordinates) && place.location.coordinates.length >= 2
+        )
+        .map((place) =>
+          new Commodity(
+            {
+              id: place._id,
+              primaryType: place.commodityTypes?.[0] || "unknown",
+              displayName: place.displayName || "Unknown",
+              location: {
+                lat: () => place.location.coordinates[1],
+                lng: () => place.location.coordinates[0],
+              },
+              formattedAddress: place.formattedAddress || "",
+            },
+            place.commodityTypes?.[0] || "unknown"
+          )
+        );
+
+      return commodities;
     } catch (error) {
       console.error("Error fetching commodities:", error);
       return [];
+    }
+  }
+
+  /**
+   * Generate mock rated cells data for testing
+   * Each cell gets a random score between 0-100
+   * @param {number} gridSize - Number of cells to generate (default 4 = 2x2 grid)
+   * @returns {Array} Array of rated cells: [{cellIndex: 0, rating: 85}, ...]
+   */
+  generateMockRatedCells(gridSize = 4) {
+    const ratedCells = [];
+    const totalCells = gridSize * gridSize;
+
+    for (let i = 0; i < totalCells; i++) {
+      ratedCells.push({
+        cellIndex: i,
+        rating: (i / totalCells) * 100, // Linear gradient 0→100
+      });
+    }
+
+    console.log("Generated mock rated cells:", ratedCells);
+    return ratedCells;
+  }
+
+  /**
+   * Display heatmap from backend cell ratings
+   * Call this method once your backend sends back the scored cells
+   * @param {Array} ratedCells - From backend: [{cellIndex: 0, rating: 85}, ...]
+   * @param {number} gridSize - Grid dimension (default 4)
+   */
+  displayHeatmap(ratedCells, gridSize = 4) {
+    console.log("Displaying heatmap with", ratedCells.length, "cells");
+    this.createHeatmapFromCells(ratedCells, gridSize);
+  }
+
+  // /**
+  //  * Create heatmap layer from backend cell ratings
+  //  * @param {Array} ratedCells - From backend: [{cellIndex: 0, rating: 85}, ...]
+  //  * @param {number} gridSize - Grid dimension (default 4)
+  //  */
+  // createHeatmapFromCells(ratedCells, gridSize) {
+  //   // get all cell boundaries
+  //   const cells = this.toGrid(gridSize);
+
+  //   // Find min and max scores for normalization
+  //   const scores = ratedCells.filter(
+  //     (score) => score !== null && score !== undefined,
+  //   );
+  //   const minScore = Math.min(...scores);
+  //   const maxScore = Math.max(...scores);
+  //   const scoreRange = maxScore - minScore;
+
+  //   console.log(
+  //     `Score range: ${minScore} to ${maxScore} (range: ${scoreRange})`,
+  //   );
+
+  //   // convert go geojson polygons
+  //   const features = ratedCells.map((score, index) => {
+  //     const cell = cells[index];
+
+  //     // Normalize score to 0-100 range based on actual min/max
+  //     let normalizedScore = 0; // default to 0 for red color
+  //     if (score !== null && score !== undefined) {
+  //       if (scoreRange > 0) {
+  //         // If there's variation in scores, normalize
+  //         normalizedScore = ((score - minScore) / scoreRange) * 100;
+  //       } else if (score > 0) {
+  //         // If all scores are the same and non-zero, show as medium (50)
+  //         normalizedScore = 50;
+  //       }
+  //       // else: score is 0 or all scores are 0, keep normalizedScore = 0 (red)
+  //     }
+
+  //     return {
+  //       type: "Feature",
+  //       properties: {
+  //         rating: normalizedScore, // Use normalized score for coloring
+  //         originalRating: score, // Keep original for reference
+  //         cellIndex: index,
+  //       },
+  //       geometry: {
+  //         type: "Polygon",
+  //         coordinates: [
+  //           [
+  //             [cell.sw.lng, cell.sw.lat], //sw corner
+  //             [cell.ne.lng, cell.sw.lat],
+  //             [cell.ne.lng, cell.ne.lat],
+  //             [cell.sw.lng, cell.ne.lat],
+  //             [cell.sw.lng, cell.sw.lat],
+  //           ],
+  //         ],
+  //       },
+  //     };
+  //   });
+
+  //   const heatmapLayer = new deck.GeoJsonLayer({
+  //     id: "heatmap",
+  //     data: { type: "FeatureCollection", features },
+  //     filled: true,
+  //     stroked: true,
+  //     getLineColor: [0, 0, 0, 255],
+  //     getLineWidth: 0,
+  //     getFillColor: (f) => {
+  //       const rating = f.properties.rating;
+  //       // Smooth gradient: red (0) -> orange -> yellow -> green (100)
+  //       const normalized = Math.max(0, Math.min(100, rating)) / 100;
+
+  //       let r, g, b;
+  //       if (normalized < 0.5) {
+  //         // Red to Orange (0.0 to 0.5)
+  //         const t = normalized * 2; // 0 to 1
+  //         r = 255;
+  //         g = Math.round(165 * t); // 0 -> 165 (red to orange)
+  //         b = 0;
+  //       } else {
+  //         // Orange to Green (0.5 to 1.0)
+  //         const t = (normalized - 0.5) * 2; // 0 to 1
+  //         r = Math.round(255 * (1 - t)); // 255 -> 0
+  //         g = Math.round(165 + (255 - 165) * t); // 165 -> 255 (orange to green)
+  //         b = 0;
+  //       }
+
+  //       return [r, g, b, 180];
+  //     },
+  //     // Add tooltip to show original scores
+  //     pickable: true,
+  //     onHover: (info) => {
+  //       if (info.object) {
+  //         console.log(
+  //           `Cell ${info.object.properties.cellIndex}: Original score = ${info.object.properties.originalRating?.toFixed(2)}, Normalized = ${info.object.properties.rating?.toFixed(2)}`,
+  //         );
+  //       }
+  //     },
+  //   });
+
+  //   if (this.deckGLInstance) {
+  //     this.deckGLInstance.setProps({ layers: [heatmapLayer] });
+  //     console.log(
+  //       `Heatmap displayed with normalized scores (${minScore.toFixed(2)} - ${maxScore.toFixed(2)})`,
+  //     );
+  //   }
+  // }
+
+  // /**
+  //  * Create heatmap layer from backend cell ratings
+  //  * @param {Array} ratedCells - From backend: [{cellIndex: 0, rating: 85}, ...]
+  //  * @param {number} gridSize - Grid dimension (default 4)
+  //  */
+  createHeatmapFromCells(ratedCells, gridSize) {
+    // get all cell boundaries
+    const cells = this.toGrid(gridSize);
+
+    // convert go geojson polygons
+    const features = ratedCells.map((ratedCell) => {
+      const cell = cells[ratedCell.cellIndex];
+
+      return {
+        type: "Feature",
+        properties: {
+          rating: ratedCell.rating,
+          cellIndex: ratedCell.cellIndex,
+        },
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [cell.sw.lng, cell.sw.lat], //sw corner
+              [cell.ne.lng, cell.sw.lat],
+              [cell.ne.lng, cell.ne.lat],
+              [cell.sw.lng, cell.ne.lat],
+              [cell.sw.lng, cell.sw.lat],
+            ],
+          ],
+        },
+      };
+    });
+
+    const heatmapLayer = new deck.GeoJsonLayer({
+      id: "heatmap",
+      data: { type: "FeatureCollection", features },
+      filled: true,
+      stroked: true,
+      getLineColor: [0, 0, 0, 255],
+      getLineWidth: 2,
+      getFillColor: (f) => {
+        const rating = f.properties.rating;
+        // Smooth gradient: red (0) -> orange -> yellow -> green (100)
+        const normalized = Math.max(0, Math.min(100, rating)) / 100;
+
+        let r, g, b;
+        if (normalized < 0.5) {
+          // Red to Yellow (0.0 to 0.5)
+          const t = normalized * 2; // 0 to 1
+          r = 255;
+          g = Math.round(165 * t + 255 * (1 - t)); // 255 -> 165
+          b = 0;
+        } else {
+          // Yellow to Green (0.5 to 1.0)
+          const t = (normalized - 0.5) * 2; // 0 to 1
+          r = Math.round(255 * (1 - t)); // 255 -> 0
+          g = 255;
+          b = 0;
+        }
+
+        return [r, g, b, 180];
+      },
+    });
+
+    if (this.deckGLInstance) {
+      this.deckGLInstance.setProps({ layers: [heatmapLayer] });
     }
   }
 
@@ -400,13 +625,14 @@ class MapManagerSingleton {
         commodities.forEach(commodity => {
           const lat = commodity.location.lat;
           const lng = commodity.location.lng;
-          
+
           // Check if commodity is within cell bounds
-          if (lat >= cellBounds.sw.lat && 
-              lat <= cellBounds.ne.lat &&
-              lng >= cellBounds.sw.lng && 
-              lng <= cellBounds.ne.lng) {
-            
+          if (
+            lat >= cellBounds.sw.lat &&
+            lat <= cellBounds.ne.lat &&
+            lng >= cellBounds.sw.lng &&
+            lng <= cellBounds.ne.lng
+          ) {
             // Map primaryType to index and increment count
             const typeIndex = typeIndexMap[commodity.primaryType];
             if (typeIndex !== undefined) {
@@ -422,38 +648,39 @@ class MapManagerSingleton {
 
         // Add cell to map
         scoringMap.addCell(cellObj, index);
-        
+
         // Log stored data for verification
         console.log(`Cell ${index} stored:`, {
           position: cellObj.getPosition(),
           commodityCounts: cellObj.getCommodities(),
-          coords: cellObj.getCoords()
+          coords: cellObj.getCoords(),
         });
       });
 
-      console.log('\n=== MAP POPULATED ===');
-      console.log('Total cells in map:', scoringMap.getGrid().length);
+      console.log("\n=== MAP POPULATED ===");
+      console.log("Total cells in map:", scoringMap.getGrid().length);
 
       // 5. Send to scorer for processing
-      console.log('\n=== SENDING TO SCORER ===');
+      console.log("\n=== SENDING TO SCORER ===");
       const scorer = new CommodityScorer({
         maxDistance: 5000,
         decayFactor: 2,
-        varianceAmplification: 2
+        varianceAmplification: 2,
       });
-      
-      console.log('Weights being used:', scoringMap.getWeight());
+
+      console.log("Weights being used:", scoringMap.getWeight());
       const scores = scoringMap.calculateScores(scorer);
       console.log(`\n=== SCORING COMPLETE ===`);
       console.log(`Processed ${scores.length} cells`);
-      
-      // Display scores after calculation
-      console.log('\nScores after calculation:');
+      console.log(scores);
+      console.log("\nScores after calculation:");
       scores.forEach((scoreData, index) => {
-        console.log(`${scoreData.gridId}: Base=${scoreData.baseScore}, Aggregated=${scoreData.aggregatedScore}`);
+        console.log(
+          `${scoreData.gridId}: Base=${scoreData.baseScore}, Aggregated=${scoreData.aggregatedScore}`,
+        );
       });
-      
-      console.log('\nAll scores from map:', scoringMap.getAllScores());
+
+      console.log("\nAll scores from map:", scoringMap.getAllScores());
 
       // 6. Return scored map to main.js
       return scoringMap;
@@ -515,6 +742,99 @@ class MapManagerSingleton {
     } else {
       console.error("deckGLInstance not found!");
     }
+  }
+
+  async scanCurrentView(commodityPreferences) {
+<<<<<<< HEAD
+    showLoading();
+    try {
+      // Create the grid
+      const gridSize = 5;
+      const grid = this.toGrid(gridSize);
+      // Fetch the commodity data
+      const data = await this.getCommodities(grid);
+
+      console.log(data);
+
+      const typeOrder = [
+        "restaurant",
+        "gas_station",
+        "supermarket",
+        "pharmacy",
+        "school",
+      ];
+
+    const scoringMap = new ScoringMap();
+    scoringMap.setGridSize(gridSize);
+
+    grid.forEach((cellBounds, index) => {
+      const c = new cell();
+      c.setPosition(index);
+      c.setCoords({
+        topright: [cellBounds.ne.lng, cellBounds.ne.lat],
+        bottomleft: [cellBounds.sw.lng, cellBounds.sw.lat],
+      });
+      typeOrder.forEach((_, i) => c.setCommodities(0, i));
+      scoringMap.addCell(c, index);
+    });
+
+    data.forEach((place) => {
+      const typeIndex = typeOrder.indexOf(place.placeType);
+      if (typeIndex === -1) return;
+      for (let i = 0; i < grid.length; i++) {
+        const cellBounds = grid[i];
+        const lat = place.location.lat;
+        const lng = place.location.lng;
+        if (
+          lat >= cellBounds.sw.lat &&
+          lat <= cellBounds.ne.lat &&
+          lng >= cellBounds.sw.lng &&
+          lng <= cellBounds.ne.lng
+        ) {
+          const cellObj = scoringMap.getCell(i);
+          const current = cellObj.getCommodities()[typeIndex] || 0;
+          cellObj.setCommodities(current + 1, typeIndex);
+          break;
+        }
+      }
+    });
+
+    const weights = typeOrder.map((t) => {
+      const v = commodityPreferences?.[t];
+      const num = typeof v === "number" ? v : parseFloat(v);
+      return Number.isFinite(num) ? num : 0;
+    });
+    scoringMap.setWeight(weights);
+
+      const scorer = new CommodityScorer();
+      scoringMap.calculateScores(scorer);
+
+    const aggregated = scoringMap
+      .getScoresArray({ type: "aggregated", includeNulls: true })
+      .map((v) => (v ?? 0));
+    return aggregated;
+    showLoading();
+    try {
+      const grid = this.toGrid(5);
+      const data = await this.getCommodities(grid);
+      console.log(data);
+      // TEMPORARY: We actually need to return an array that represents the grid with scores (Howard's part)
+      // TODO: Howard, please design a way for me to pass in grid, data, and commodityPreferences to your calculation function
+      // and return the proper scores for each cell in the grid.
+      return { grid, data, commodityPreferences };
+    } finally {
+      hideLoading();
+    }
+=======
+    // Extract commodity types with non-zero values
+    const commodityTypes = Object.keys(commodityPreferences).filter(
+      type => commodityPreferences[type] > 0
+    );
+    
+    const data = await this.getCommodities(commodityTypes);
+    // TODO: Pass data and commodityPreferences to scoring/calculation function
+    return { data, commodityPreferences };
+>>>>>>> ea34776 (Adding caching to commodities fetching.)
   }
 }
 
@@ -629,5 +949,78 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     }
+
+    // Get commodity preferences from the form
+    const commodityPreferences = getCommodityPreferences();
+    console.log("Commodity Preferences:", commodityPreferences);
+
+    // Pass preferences to map manager
+<<<<<<< HEAD
+    const arrayOfCellsWithScore =
+      await MapManager.scanCurrentView(commodityPreferences);
+    console.log("Array of cells with score:", arrayOfCellsWithScore);
+
+    // const mockData = MapManager.generateMockRatedCells(4);
+    MapManager.displayHeatmap(
+      arrayOfCellsWithScore,
+      Math.sqrt(arrayOfCellsWithScore.length),
+    );
+=======
+    const { data } = await MapManager.scanCurrentView(commodityPreferences);
+    console.log("Scan complete. Places:", Array.isArray(data) ? data.length : 0);
+    if (Array.isArray(data)) {
+      const preview = data.map((p) => ({
+        id: p.id,
+        name: p.displayName,
+        type: p.primaryType,
+        lat: p.location?.lat,
+        lng: p.location?.lng,
+        address: p.formattedAddress,
+      }));
+      console.table(preview);
+      console.log("Full data array:", data);
+    }
+    MapManager.updateVisualization(data);
+
+>>>>>>> ea34776 (Adding caching to commodities fetching.)
   });
 });
+
+/**
+ * Get commodity preference values from the form
+ * @returns {Object} Key-value pairs where key is commodity type and value is the slider value (0-100)
+ */
+function getCommodityPreferences() {
+  const form = document.getElementById("input-form");
+  const sliders = form.querySelectorAll('input[type="range"]');
+
+  const preferences = {};
+
+  sliders.forEach((slider) => {
+    const commodityType = slider.name; // e.g., "restaurant", "gas_station", etc.
+    const value = parseInt(slider.value, 10);
+    preferences[commodityType] = value;
+  });
+
+  return preferences;
+}
+
+/**
+ * Show loading overlay
+ */
+function showLoading() {
+  const loadingOverlay = document.getElementById("loading-overlay");
+  if (loadingOverlay) {
+    loadingOverlay.style.display = "flex";
+  }
+}
+
+/**
+ * Hide loading overlay
+ */
+function hideLoading() {
+  const loadingOverlay = document.getElementById("loading-overlay");
+  if (loadingOverlay) {
+    loadingOverlay.style.display = "none";
+  }
+}
