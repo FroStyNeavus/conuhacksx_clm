@@ -741,9 +741,8 @@ class MapManagerSingleton {
         "school",
       ];
 
-      // Populate the scoring map
-      const scoringMap = new ScoringMap();
-      scoringMap.setGridSize(gridSize);
+    const scoringMap = new ScoringMap();
+    scoringMap.setGridSize(gridSize);
 
       grid.forEach((cellBounds, index) => {
         const c = new cell();
@@ -802,6 +801,14 @@ class MapManagerSingleton {
       const scorer = new CommodityScorer();
       scoringMap.calculateScores(scorer);
 
+    const base = scoringMap
+      .getScoresArray({ type: "base", includeNulls: true })
+      .map((v) => (v ?? 0));
+    const aggregated = scoringMap
+      .getScoresArray({ type: "aggregated", includeNulls: true })
+      .map((v) => (v ?? 0));
+
+    return { base, aggregated };
       const aggregated = scoringMap
         .getScoresArray({ type: "aggregated", includeNulls: true })
         .map((v) => v ?? 0);
