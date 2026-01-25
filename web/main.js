@@ -325,6 +325,27 @@ class MapManagerSingleton {
   }
 
   /**
+   * Generate mock rated cells data for testing
+   * Each cell gets a random score between 0-100
+   * @param {number} gridSize - Number of cells to generate (default 4 = 2x2 grid)
+   * @returns {Array} Array of rated cells: [{cellIndex: 0, rating: 85}, ...]
+   */
+  generateMockRatedCells(gridSize = 4) {
+    const ratedCells = [];
+    const totalCells = gridSize * gridSize;
+
+    for (let i = 0; i < totalCells; i++) {
+      ratedCells.push({
+        cellIndex: i,
+        rating: (i / totalCells) * 100, // Linear gradient 0→100
+      });
+    }
+
+    console.log("Generated mock rated cells:", ratedCells);
+    return ratedCells;
+  }
+
+  /**
    * Display heatmap from backend cell ratings
    * Call this method once your backend sends back the scored cells
    * @param {Array} ratedCells - From backend: [{cellIndex: 0, rating: 85}, ...]
@@ -345,25 +366,27 @@ class MapManagerSingleton {
     const cells = this.toGrid(gridSize);
 
     // convert go geojson polygons
-    const features = ratedCells.map(ratedCell => {
+    const features = ratedCells.map((ratedCell) => {
       const cell = cells[ratedCell.cellIndex];
 
       return {
         type: "Feature",
         properties: {
           rating: ratedCell.rating,
-          cellIndex: ratedCell.cellIndex
+          cellIndex: ratedCell.cellIndex,
         },
         geometry: {
           type: "Polygon",
-          coordinates: [[
-            [cell.sw.lng, cell.sw.lat], //sw corner
-            [cell.ne.lng, cell.sw.lat],
-            [cell.ne.lng, cell.ne.lat],
-            [cell.sw.lng, cell.ne.lat],
-            [cell.sw.lng, cell.sw.lat]
-          ]]
-        }
+          coordinates: [
+            [
+              [cell.sw.lng, cell.sw.lat], //sw corner
+              [cell.ne.lng, cell.sw.lat],
+              [cell.ne.lng, cell.ne.lat],
+              [cell.sw.lng, cell.ne.lat],
+              [cell.sw.lng, cell.sw.lat],
+            ],
+          ],
+        },
       };
     });
 
@@ -376,12 +399,26 @@ class MapManagerSingleton {
       getLineWidth: 2,
       getFillColor: (f) => {
         const rating = f.properties.rating;
-        // Color scale: red (bad) to green ( good)
-        if (rating > 75) return [0, 255, 0, 180];
-        if (rating > 50) return [255, 255, 0, 180];
-        if (rating > 25) return [255, 165, 0, 180];
-        return [255, 0, 0, 180];
-      }
+        // Smooth gradient: red (0) -> orange -> yellow -> green (100)
+        const normalized = Math.max(0, Math.min(100, rating)) / 100;
+
+        let r, g, b;
+        if (normalized < 0.5) {
+          // Red to Yellow (0.0 to 0.5)
+          const t = normalized * 2; // 0 to 1
+          r = 255;
+          g = Math.round(165 * t + 255 * (1 - t)); // 255 -> 165
+          b = 0;
+        } else {
+          // Yellow to Green (0.5 to 1.0)
+          const t = (normalized - 0.5) * 2; // 0 to 1
+          r = Math.round(255 * (1 - t)); // 255 -> 0
+          g = 255;
+          b = 0;
+        }
+
+        return [r, g, b, 180];
+      },
     });
 
     if (this.deckGLInstance) {
@@ -637,6 +674,18 @@ class MapManagerSingleton {
       .getScoresArray({ type: "aggregated", includeNulls: true })
       .map((v) => (v ?? 0));
     return aggregated;
+    showLoading();
+    try {
+      const grid = this.toGrid(5);
+      const data = await this.getCommodities(grid);
+      console.log(data);
+      // TEMPORARY: We actually need to return an array that represents the grid with scores (Howard's part)
+      // TODO: Howard, please design a way for me to pass in grid, data, and commodityPreferences to your calculation function
+      // and return the proper scores for each cell in the grid.
+      return { grid, data, commodityPreferences };
+    } finally {
+      hideLoading();
+    }
   }
 }
 
@@ -751,6 +800,16 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     }
+
+    // Get commodity preferences from the form
+    const commodityPreferences = getCommodityPreferences();
+    console.log("Commodity Preferences:", commodityPreferences);
+
+    // Pass preferences to map manager
+    await MapManager.scanCurrentView(commodityPreferences);
+
+    const mockData = MapManager.generateMockRatedCells(4);
+    MapManager.displayHeatmap(mockData, 4);
   });
 });
 
@@ -771,4 +830,24 @@ function getCommodityPreferences() {
   });
 
   return preferences;
+}
+
+/**
+ * Show loading overlay
+ */
+function showLoading() {
+  const loadingOverlay = document.getElementById("loading-overlay");
+  if (loadingOverlay) {
+    loadingOverlay.style.display = "flex";
+  }
+}
+
+/**
+ * Hide loading overlay
+ */
+function hideLoading() {
+  const loadingOverlay = document.getElementById("loading-overlay");
+  if (loadingOverlay) {
+    loadingOverlay.style.display = "none";
+  }
 }
