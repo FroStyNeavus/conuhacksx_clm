@@ -165,10 +165,13 @@ class CommoditiesManager {
  */
 class MapManagerSingleton {
   constructor() {
+    // Google Maps instance
     this.map = null;
+    // Current commodities data
     this.commoditiesData = [];
+    // Deck.GL overlay instance
+    // Deck.GL is an container for layers that can be added to the props of the overlay
     this.deckGLInstance = null;
-    this.idleTimeout = null; // For debouncing map idle event
   }
 
   /**
@@ -178,13 +181,18 @@ class MapManagerSingleton {
     try {
       // Load Google Maps API
       const { Map } = await google.maps.importLibrary("maps");
-      // Create and store map instance
+      // Unitialize the map instance and attach to DOM
       this.map = new Map(document.getElementById("map"), MAP_CONFIG);
-      console.log("Google Maps instance created");
 
       try {
-        await this.initializeOverlay();
-        console.log("Overlay initialized, fetching initial data...");
+        // Create GoogleMapsOverlay instance from Deck.GL
+        this.deckGLInstance = new deck.GoogleMapsOverlay({
+          layers: [], 
+        });
+        console.log("GoogleMapsOverlay instance created:", !!this.deckGLInstance);
+
+        this.deckGLInstance.setMap(this.map);
+        console.log("GoogleMapsOverlay attached to map via setMap()");
 
         // Fetch initial data after overlay is ready
         // const { grid, data } = await this.getCommodities();
@@ -200,22 +208,22 @@ class MapManagerSingleton {
       } catch (overlayError) {
         console.error("Error initializing overlay:", overlayError);
       }
+
+      console.log("Overlay initialized, fetching initial data...");
       // !IMPORTANT: State change listener for any data updates, fetching, etc.
       // Debounced idle event - waits 2 seconds after map stops moving
-      // google.maps.event.addListener(this.map, "idle", () => {
-      //   // Clear any existing timeout
-      //   if (this.idleTimeout) {
-      //     clearTimeout(this.idleTimeout);
-      //   }
+      google.maps.event.addListener(this.map, "idle", () => {
+        // Clear any existing timeout
+        if (this.idleTimeout) {
+          clearTimeout(this.idleTimeout);
+        }
 
-      //   // Set a new timeout for 2 seconds
-      //   this.idleTimeout = setTimeout(() => {
-      //     console.log("Map idle for 2 seconds, triggering scan...");
-      //     this.scanCurrentView();
-      //   }, 2000); // 2 second delay
-      // });
-
-      console.log(LOG_MESSAGE.GOOGLE_API_LOADED); //TODO: Remove log
+        // Set a new timeout for 2 seconds
+        this.idleTimeout = setTimeout(() => {
+          console.log("Map idle for 2 seconds, triggering scan...");
+          this.scanCurrentView();
+        }, 2000); // 2 second delay
+      });
     } catch (error) {
       console.error(ERROR_MESSAGE.GOOGLE_API_TIME_OUT);
     }
@@ -280,26 +288,38 @@ class MapManagerSingleton {
     return cells;
   }
 
+
+  /**
+   * Fetch nearby commodities for the current map bounds
+   * @async
+   * @param {string[]} [commodityTypes] - Filter by type (e.g., ['restaurant', 'gas_station'])
+   * @returns {Promise<Commodity[]>} Array of Commodity objects with location and metadata
+   */
   async getCommodities(commodityTypes) {
     try {
+
+
+      // EDGE CASE: MAP ISN'T INSTANTIATED YET
       if (!this.map) {
         console.error("Map not initialized");
         return [];
       }
 
+
+      // Find the dimension of the current map view
       const center = this.map.getCenter();
       const bounds = this.map.getBounds();
       const ne = bounds.getNorthEast();
       const sw = bounds.getSouthWest();
 
-      // Calculate radius from map bounds
+      // Calculate minimum radius to scan to span the entire view
       const { spherical } = await google.maps.importLibrary("geometry");
       const diameter = spherical.computeDistanceBetween(ne, sw);
       const radius = Math.min(diameter / 2, 50000);
 
       // Build query string with commodity types
-      const typeParams = commodityTypes && commodityTypes.length > 0 
-        ? `&types=${commodityTypes.join(',')}` 
+      const typeParams = commodityTypes && commodityTypes.length > 0
+        ? `&types=${commodityTypes.join(',')}`
         : '';
 
       // Fetch from backend API (DatabaseManager handles caching and Google API internally)
@@ -307,13 +327,10 @@ class MapManagerSingleton {
         `/api/commodities?lat=${center.lat()}&lng=${center.lng()}&radius=${radius}${typeParams}`
       );
 
-      console.log("Fetched complete");
-
+      // EDGE CASE: ERROR WITH API CALL, DATABASE ERRORS
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
       }
-
-      console.log(response);
 
       const data = await response.json();
       const places = data.places || [];
@@ -559,23 +576,6 @@ class MapManagerSingleton {
   /**
    * Commodities data are already loaded at this point, only initialize the overlay
    */
-  async initializeOverlay() {
-    try {
-      console.log("Initializing GoogleMapsOverlay...");
-      console.log("this.map exists:", !!this.map);
-
-      // Create GoogleMapsOverlay instance
-      this.deckGLInstance = new deck.GoogleMapsOverlay({
-        layers: [],
-      });
-      console.log("GoogleMapsOverlay instance created:", !!this.deckGLInstance);
-
-      this.deckGLInstance.setMap(this.map);
-      console.log("GoogleMapsOverlay attached to map via setMap()");
-    } catch (error) {
-      console.error("Error initializing GoogleMapsOverlay:", error);
-    }
-  }
 
   /**
    * Initialize the scoring map with cells and commodities
@@ -610,7 +610,7 @@ class MapManagerSingleton {
       console.log('\n=== POPULATING CELLS ===');
       gridCells.forEach((cellBounds, index) => {
         const cellObj = new cell();
-        
+
         // Set cell coordinates from grid bounds
         cellObj.setCoords({
           topright: [cellBounds.ne.lng, cellBounds.ne.lat],
@@ -901,7 +901,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Handle scan button click to initialize scoring map
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    
+
     // Get weights from form sliders
     const weights = [
       parseFloat(document.getElementById('restaurant-value')?.textContent || 85),
@@ -910,19 +910,19 @@ document.addEventListener("DOMContentLoaded", () => {
       parseFloat(document.getElementById('pharmacy-value')?.textContent || 70),
       parseFloat(document.getElementById('school-value')?.textContent || 90)
     ];
-    
+
     console.log('Weights from form:', weights);
-    
+
     // Data flow: main.js → Map class → CommodityScorer → Map class → main.js
     const scoringMap = await MapManager.initializeScoringMap(3, weights);
-    
+
     if (scoringMap) {
       console.log('\n=== SCORING MAP COMPLETE ===');
       console.log('Grid size:', scoringMap.getGridSize());
       console.log('Center cell:', scoringMap.getCenter());
       console.log('Weights:', scoringMap.getWeight());
       console.log('All scores [baseScore, aggregatedScore]:', scoringMap.getAllScores());
-      
+
       // Display individual cell details
       console.log('\n=== CELL DETAILS ===');
       for (let i = 0; i < scoringMap.getGridSize(); i++) {
