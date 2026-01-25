@@ -333,14 +333,14 @@ class MapManagerSingleton {
   generateMockRatedCells(gridSize = 4) {
     const ratedCells = [];
     const totalCells = gridSize * gridSize;
-    
+
     for (let i = 0; i < totalCells; i++) {
       ratedCells.push({
         cellIndex: i,
-        rating: (i / totalCells) * 100 // Linear gradient 0→100
+        rating: (i / totalCells) * 100, // Linear gradient 0→100
       });
     }
-    
+
     console.log("Generated mock rated cells:", ratedCells);
     return ratedCells;
   }
@@ -366,25 +366,27 @@ class MapManagerSingleton {
     const cells = this.toGrid(gridSize);
 
     // convert go geojson polygons
-    const features = ratedCells.map(ratedCell => {
+    const features = ratedCells.map((ratedCell) => {
       const cell = cells[ratedCell.cellIndex];
 
       return {
         type: "Feature",
         properties: {
           rating: ratedCell.rating,
-          cellIndex: ratedCell.cellIndex
+          cellIndex: ratedCell.cellIndex,
         },
         geometry: {
           type: "Polygon",
-          coordinates: [[
-            [cell.sw.lng, cell.sw.lat], //sw corner
-            [cell.ne.lng, cell.sw.lat],
-            [cell.ne.lng, cell.ne.lat],
-            [cell.sw.lng, cell.ne.lat],
-            [cell.sw.lng, cell.sw.lat]
-          ]]
-        }
+          coordinates: [
+            [
+              [cell.sw.lng, cell.sw.lat], //sw corner
+              [cell.ne.lng, cell.sw.lat],
+              [cell.ne.lng, cell.ne.lat],
+              [cell.sw.lng, cell.ne.lat],
+              [cell.sw.lng, cell.sw.lat],
+            ],
+          ],
+        },
       };
     });
 
@@ -399,7 +401,7 @@ class MapManagerSingleton {
         const rating = f.properties.rating;
         // Smooth gradient: red (0) -> orange -> yellow -> green (100)
         const normalized = Math.max(0, Math.min(100, rating)) / 100;
-        
+
         let r, g, b;
         if (normalized < 0.5) {
           // Red to Yellow (0.0 to 0.5)
@@ -414,9 +416,9 @@ class MapManagerSingleton {
           g = 255;
           b = 0;
         }
-        
+
         return [r, g, b, 180];
-      }
+      },
     });
 
     if (this.deckGLInstance) {
@@ -500,13 +502,18 @@ class MapManagerSingleton {
   }
 
   async scanCurrentView(commodityPreferences) {
-    const grid = this.toGrid(5);
-    const data = await this.getCommodities(grid);
-    console.log(data);
-    // TEMPORARY: We actually need to return an array that represents the grid with scores (Howard's part)
-    // TODO: Howard, please design a way for me to pass in grid, data, and commodityPreferences to your calculation function
-    // and return the proper scores for each cell in the grid.
-    return { grid, data, commodityPreferences };
+    showLoading();
+    try {
+      const grid = this.toGrid(5);
+      const data = await this.getCommodities(grid);
+      console.log(data);
+      // TEMPORARY: We actually need to return an array that represents the grid with scores (Howard's part)
+      // TODO: Howard, please design a way for me to pass in grid, data, and commodityPreferences to your calculation function
+      // and return the proper scores for each cell in the grid.
+      return { grid, data, commodityPreferences };
+    } finally {
+      hideLoading();
+    }
   }
 }
 
@@ -594,7 +601,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const mockData = MapManager.generateMockRatedCells(4);
     MapManager.displayHeatmap(mockData, 4);
-
   });
 });
 
@@ -615,4 +621,24 @@ function getCommodityPreferences() {
   });
 
   return preferences;
+}
+
+/**
+ * Show loading overlay
+ */
+function showLoading() {
+  const loadingOverlay = document.getElementById("loading-overlay");
+  if (loadingOverlay) {
+    loadingOverlay.style.display = "flex";
+  }
+}
+
+/**
+ * Hide loading overlay
+ */
+function hideLoading() {
+  const loadingOverlay = document.getElementById("loading-overlay");
+  if (loadingOverlay) {
+    loadingOverlay.style.display = "none";
+  }
 }
